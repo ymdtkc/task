@@ -12,10 +12,6 @@ import { CheckCircle, List, Grid3X3, Calendar, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Toaster } from "./components/ui/sonner";
 
-function generateId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).substr(2);
-}
-
 export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -58,7 +54,7 @@ export default function App() {
   const handleAddTask = (taskData: Omit<Task, 'id' | 'createdAt'>) => {
     const newTask: Task = {
       ...taskData,
-      id: generateId(),
+      id: crypto.randomUUID(),
       createdAt: new Date()
     };
     
@@ -196,14 +192,7 @@ export default function App() {
                 </TabsTrigger>
               </TabsList>
               
-              {!showForm && activeTab !== "list" && (
-                <Button onClick={() => setShowForm(true)} className="flex items-center gap-2">
-                  <Plus className="h-4 w-4" />
-                  新しいタスク
-                </Button>
-              )}
-              
-              {!showForm && activeTab === "list" && (
+              {!showForm && (
                 <Button onClick={() => setShowForm(true)} className="flex items-center gap-2">
                   <Plus className="h-4 w-4" />
                   新しいタスク
