@@ -88,33 +88,19 @@ export default function App() {
   };
 
   const handleToggleComplete = (id: string) => {
-    setTasks(prev => 
-      prev.map(task => 
-        task.id === id 
-          ? { ...task, completed: !task.completed }
-          : task
-      )
-    );
-    
     const task = tasks.find(t => t.id === id);
-    if (task) {
-      toast.success(task.completed ? "タスクを未完了にしました" : "タスクを完了しました");
-    }
+    if (!task) return;
+    const newCompleted = !task.completed;
+    setTasks(prev => prev.map(t => t.id === id ? { ...t, completed: newCompleted } : t));
+    toast.success(newCompleted ? "タスクを完了しました" : "タスクを未完了にしました");
   };
 
   const handleToggleToday = (id: string) => {
-    setTasks(prev => 
-      prev.map(task => 
-        task.id === id 
-          ? { ...task, isToday: !task.isToday }
-          : task
-      )
-    );
-    
     const task = tasks.find(t => t.id === id);
-    if (task) {
-      toast.success(task.isToday ? "今日のタスクから削除しました" : "今日のタスクに追加しました");
-    }
+    if (!task) return;
+    const newIsToday = !task.isToday;
+    setTasks(prev => prev.map(t => t.id === id ? { ...t, isToday: newIsToday } : t));
+    toast.success(newIsToday ? "今日のタスクに追加しました" : "今日のタスクから削除しました");
   };
 
   const handleEditTask = (task: Task) => {
