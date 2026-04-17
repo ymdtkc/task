@@ -8,15 +8,21 @@ import { TodaysTasks } from "./components/TodaysTasks";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
 import { Button } from "./components/ui/button";
 import { Alert, AlertDescription } from "./components/ui/alert";
-import { CheckCircle, List, Grid3X3, Calendar, Plus } from "lucide-react";
+import { CheckCircle, List, Grid3X3, Calendar, Plus, Download } from "lucide-react";
 import { toast } from "sonner";
 import { Toaster } from "./components/ui/sonner";
+import { downloadExport, formatRelativeTime } from "./lib/taskIO";
+
+const LAST_EXPORTED_AT_KEY = "lastExportedAt";
 
 export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [activeTab, setActiveTab] = useState("list");
+  const [lastExportedAt, setLastExportedAt] = useState<string | null>(() =>
+    localStorage.getItem(LAST_EXPORTED_AT_KEY)
+  );
 
   // ローカルストレージからタスクを読み込み
   useEffect(() => {
@@ -114,6 +120,13 @@ export default function App() {
     setShowForm(false);
   };
 
+  const handleExport = () => {
+    const iso = downloadExport(tasks);
+    localStorage.setItem(LAST_EXPORTED_AT_KEY, iso);
+    setLastExportedAt(iso);
+    toast.success(`エクスポートしました（${tasks.length}件）`);
+  };
+
   const handleMoveTask = (taskId: string, newImportance: number, newUrgency: number) => {
     setTasks(prev => 
       prev.map(task => 
@@ -141,8 +154,29 @@ export default function App() {
       <div className="min-h-screen bg-background">
         <div className="container mx-auto p-4 max-w-7xl">
         <div className="mb-8">
-          <h1 className="mb-2">タスク管理ツール</h1>
-          
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h1 className="mb-0">タスク管理ツール</h1>
+            <div className="flex flex-wrap items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleExport}
+                disabled={tasks.length === 0}
+                title={tasks.length === 0 ? "エクスポートするタスクがありません" : undefined}
+                className="flex items-center gap-2"
+              >
+                <Download className="h-4 w-4" />
+                エクスポート
+              </Button>
+            </div>
+          </div>
+
+          {lastExportedAt && (
+            <p className="text-xs text-muted-foreground mt-2">
+              最終バックアップ: {formatRelativeTime(lastExportedAt)}
+            </p>
+          )}
+
           {tasks.length > 0 && (
             <div className="flex gap-4 mt-4">
               <div className="flex items-center gap-2 text-muted-foreground">
