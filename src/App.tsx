@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { TaskForm, Task } from "./components/TaskForm";
@@ -8,10 +8,18 @@ import { TodaysTasks } from "./components/TodaysTasks";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "./components/ui/tabs";
 import { Button } from "./components/ui/button";
 import { Alert, AlertDescription } from "./components/ui/alert";
-import { CheckCircle, List, Grid3X3, Calendar, Plus, Download } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "./components/ui/dialog";
+import { CheckCircle, List, Grid3X3, Calendar, Plus, Download, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Toaster } from "./components/ui/sonner";
-import { downloadExport, formatRelativeTime } from "./lib/taskIO";
+import { downloadExport, formatRelativeTime, parseImport, mergeAppend } from "./lib/taskIO";
 
 const LAST_EXPORTED_AT_KEY = "lastExportedAt";
 
@@ -23,6 +31,8 @@ export default function App() {
   const [lastExportedAt, setLastExportedAt] = useState<string | null>(() =>
     localStorage.getItem(LAST_EXPORTED_AT_KEY)
   );
+  const [pendingImport, setPendingImport] = useState<Task[] | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ローカルストレージからタスクを読み込み
   useEffect(() => {
@@ -127,6 +137,42 @@ export default function App() {
     toast.success(`エクスポートしました（${tasks.length}件）`);
   };
 
+  const handleImportClick = () => {
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    // リセット：同じファイルを再選択できるように
+    e.target.value = "";
+    if (!file) return;
+
+    const text = await file.text();
+    const result = parseImport(text);
+    if (!result.ok) {
+      toast.error(`インポートに失敗しました: ${result.error}`);
+      return;
+    }
+    if (result.tasks.length === 0) {
+      toast.error("インポートするタスクがありません");
+      return;
+    }
+    setPendingImport(result.tasks);
+  };
+
+  const handleConfirmImport = (mode: "overwrite" | "append") => {
+    if (!pendingImport) return;
+    const count = pendingImport.length;
+    if (mode === "overwrite") {
+      setTasks(pendingImport);
+      toast.success(`${count}件のタスクで上書きしました`);
+    } else {
+      setTasks((prev) => mergeAppend(prev, pendingImport));
+      toast.success(`${count}件のタスクを追加しました`);
+    }
+    setPendingImport(null);
+  };
+
   const handleMoveTask = (taskId: string, newImportance: number, newUrgency: number) => {
     setTasks(prev => 
       prev.map(task => 
@@ -168,6 +214,22 @@ export default function App() {
                 <Download className="h-4 w-4" />
                 エクスポート
               </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleImportClick}
+                className="flex items-center gap-2"
+              >
+                <Upload className="h-4 w-4" />
+                インポート
+              </Button>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="application/json,.json"
+                className="hidden"
+                onChange={handleFileSelected}
+              />
             </div>
           </div>
 
@@ -281,6 +343,35 @@ export default function App() {
         </div>
         </div>
       </div>
+
+      <Dialog
+        open={pendingImport !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingImport(null);
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>インポート方法を選択</DialogTitle>
+            <DialogDescription>
+              {pendingImport?.length ?? 0}件のタスクを読み込みました。
+              現在のタスク（{tasks.length}件）をどう扱いますか？
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button variant="outline" onClick={() => setPendingImport(null)}>
+              キャンセル
+            </Button>
+            <Button variant="outline" onClick={() => handleConfirmImport("append")}>
+              追加
+            </Button>
+            <Button variant="destructive" onClick={() => handleConfirmImport("overwrite")}>
+              上書き
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       <Toaster />
     </DndProvider>
   );
