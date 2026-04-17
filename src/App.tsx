@@ -22,6 +22,8 @@ import { Toaster } from "./components/ui/sonner";
 import { downloadExport, formatRelativeTime, parseImport, mergeAppend } from "./lib/taskIO";
 
 const LAST_EXPORTED_AT_KEY = "lastExportedAt";
+const UNDO_WINDOW_MS = 8000;
+const RESTORE_TOAST_MS = 2000;
 
 export default function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -121,8 +123,22 @@ export default function App() {
   };
 
   const handleDeleteTask = (id: string) => {
-    setTasks(prev => prev.filter(task => task.id !== id));
-    toast.success("タスクを削除しました");
+    const index = tasks.findIndex(t => t.id === id);
+    if (index === -1) return;
+    const deleted = tasks[index];
+
+    setTasks(prev => prev.filter(t => t.id !== id));
+
+    toast.success("タスクを削除しました", {
+      duration: UNDO_WINDOW_MS,
+      action: {
+        label: "元に戻す",
+        onClick: () => {
+          setTasks(prev => [...prev.slice(0, index), deleted, ...prev.slice(index)]);
+          toast.success("タスクを復元しました", { duration: RESTORE_TOAST_MS });
+        },
+      },
+    });
   };
 
   const handleCancelEdit = () => {
