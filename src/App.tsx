@@ -23,6 +23,7 @@ import { Toaster } from "./components/ui/sonner";
 import { downloadExport, formatRelativeTime, parseImport } from "./lib/taskIO";
 import { createLocalRepo, createSupabaseRepo, TasksRepo } from "./lib/tasksRepo";
 import { AuthButtons } from "./components/AuthButtons";
+import { MigrationPrompt } from "./components/MigrationPrompt";
 import { useAuth } from "./hooks/useAuth";
 
 const LAST_EXPORTED_AT_KEY = "lastExportedAt";
@@ -84,6 +85,19 @@ export default function App() {
   }, [repo, retryKey]);
 
   const handleRetry = () => setRetryKey((k) => k + 1);
+
+  const handleMigrate = async (localTasks: Task[]) => {
+    try {
+      const restored = await repo.bulkRestore(localTasks);
+      localStorage.removeItem("tasks");
+      if (userId) localStorage.removeItem(`migrationSkipped_${userId}`);
+      setTasks(restored);
+      toast.success(`${restored.length}件のタスクを移行しました`);
+    } catch (e) {
+      toast.error(`移行に失敗しました: ${errMsg(e)}`);
+      throw e;
+    }
+  };
 
   // タブ切り替え時のフォーム表示状態管理
   useEffect(() => {
@@ -374,6 +388,13 @@ export default function App() {
               </div>
             </div>
           )}
+
+          <MigrationPrompt
+            userId={userId ?? null}
+            tasksLoaded={!isLoadingTasks && !loadError}
+            cloudIsEmpty={tasks.length === 0}
+            onMigrate={handleMigrate}
+          />
         </div>
 
         <div className="space-y-6">
