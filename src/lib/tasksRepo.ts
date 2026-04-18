@@ -16,9 +16,13 @@ export interface TasksRepo {
   // round-trip. The row id column has gen_random_uuid() as its DEFAULT,
   // which yields to an explicit value when provided.
   restore(task: Task): Promise<Task>;
-  // Atomic bulk insert — either every row lands or none do. Used by the
-  // Step 6 migration flow to avoid partial uploads.
+  // Atomic bulk insert — either every row lands or none do.
   bulkCreate(inputs: Omit<Task, "id" | "createdAt">[]): Promise<Task[]>;
+  // Atomic bulk insert that preserves each task's existing id and
+  // createdAt. Used by the Step 6 migration flow so a user's
+  // 7-month-old task doesn't get stamped with today's date when it
+  // moves from localStorage to the cloud.
+  bulkRestore(tasks: Task[]): Promise<Task[]>;
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -77,6 +81,10 @@ export function createLocalRepo(): TasksRepo {
       }));
       saveLocal([...created, ...loadLocal()]);
       return created;
+    },
+    async bulkRestore(tasks) {
+      saveLocal([...tasks, ...loadLocal()]);
+      return tasks;
     },
   };
 }
@@ -207,9 +215,28 @@ export function createSupabaseRepo(userId: string): TasksRepo {
       // Single PostgREST request with an array body → one SQL INSERT
       // statement → one implicit transaction. If any row fails a check
       // constraint or RLS policy, the entire statement aborts and no
-      // rows are inserted. That's the "all-or-nothing" guarantee Step 6
-      // relies on for migration integrity.
+      // rows are inserted.
       const payloads = inputs.map((i) => toInsertPayload(i, userId));
+      const { data, error } = await client.from("tasks").insert(payloads).select();
+      if (error) throw error;
+      return (data ?? []).map(fromRow);
+    },
+
+    async bulkRestore(tasks) {
+      // Same atomicity story as bulkCreate, but preserves id and
+      // created_at so migrated rows keep their original chronology.
+      const payloads = tasks.map((t) => ({
+        id: t.id,
+        user_id: userId,
+        title: t.title,
+        description: t.description,
+        importance: t.importance,
+        urgency: t.urgency,
+        duration: t.duration,
+        is_today: t.isToday,
+        completed: t.completed,
+        created_at: t.createdAt.toISOString(),
+      }));
       const { data, error } = await client.from("tasks").insert(payloads).select();
       if (error) throw error;
       return (data ?? []).map(fromRow);
