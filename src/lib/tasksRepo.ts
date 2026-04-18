@@ -93,9 +93,10 @@ export function createLocalRepo(): TasksRepo {
 // Supabase backend
 // ─────────────────────────────────────────────────────────────
 
-// Mirrors the DB row shape (snake_case). Kept private — the rest of the
-// app only ever sees the camelCase Task type exposed by TaskForm.
-type TaskRow = {
+// Mirrors the DB row shape (snake_case). Exported so the realtime hook
+// can reuse the same mapping for postgres_changes payloads; direct use
+// from components is still discouraged — prefer the Task camelCase form.
+export type TaskRow = {
   id: string;
   user_id: string;
   title: string;
@@ -109,7 +110,7 @@ type TaskRow = {
   updated_at: string;
 };
 
-function fromRow(row: TaskRow): Task {
+export function fromRow(row: TaskRow): Task {
   return {
     id: row.id,
     title: row.title,

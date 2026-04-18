@@ -25,6 +25,7 @@ import { createLocalRepo, createSupabaseRepo, TasksRepo } from "./lib/tasksRepo"
 import { AuthButtons } from "./components/AuthButtons";
 import { MigrationPrompt } from "./components/MigrationPrompt";
 import { useAuth } from "./hooks/useAuth";
+import { useRealtimeTasks } from "./hooks/useRealtimeTasks";
 
 const LAST_EXPORTED_AT_KEY = "lastExportedAt";
 const UNDO_WINDOW_MS = 8000;
@@ -85,6 +86,8 @@ export default function App() {
   }, [repo, retryKey]);
 
   const handleRetry = () => setRetryKey((k) => k + 1);
+
+  useRealtimeTasks(userId ?? null, setTasks);
 
   const handleMigrate = async (localTasks: Task[]) => {
     try {
