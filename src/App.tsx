@@ -20,6 +20,7 @@ import { CheckCircle, List, Grid3X3, Calendar, Plus, Download, Upload } from "lu
 import { toast } from "sonner";
 import { Toaster } from "./components/ui/sonner";
 import { downloadExport, formatRelativeTime, parseImport, mergeAppend } from "./lib/taskIO";
+import { AuthButtons } from "./components/AuthButtons";
 
 const LAST_EXPORTED_AT_KEY = "lastExportedAt";
 const UNDO_WINDOW_MS = 8000;
@@ -246,6 +247,7 @@ export default function App() {
                 className="hidden"
                 onChange={handleFileSelected}
               />
+              <AuthButtons />
             </div>
           </div>
 
