@@ -16,7 +16,8 @@ import {
   DialogHeader,
   DialogTitle,
 } from "./components/ui/dialog";
-import { CheckCircle, List, Grid3X3, Calendar, Plus, Download, Upload } from "lucide-react";
+import { CheckCircle, List, Grid3X3, Calendar, Plus, Download, Upload, Loader2, AlertCircle } from "lucide-react";
+import { Card, CardContent } from "./components/ui/card";
 import { toast } from "sonner";
 import { Toaster } from "./components/ui/sonner";
 import { downloadExport, formatRelativeTime, parseImport } from "./lib/taskIO";
@@ -42,6 +43,9 @@ export default function App() {
   }, [userId]);
 
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [isLoadingTasks, setIsLoadingTasks] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [activeTab, setActiveTab] = useState("list");
@@ -52,10 +56,13 @@ export default function App() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Load tasks whenever the repo changes (session change = user switch or
-  // logout). Clearing first prevents a brief flash of the previous user's
-  // tasks while the new list is in flight.
+  // logout), or when the user explicitly retries via handleRetry.
+  // Clearing first prevents a brief flash of the previous user's tasks
+  // while the new list is in flight.
   useEffect(() => {
     let cancelled = false;
+    setIsLoadingTasks(true);
+    setLoadError(null);
     setTasks([]);
     repo
       .list()
@@ -65,13 +72,18 @@ export default function App() {
       .catch((e) => {
         if (!cancelled) {
           console.error("[tasks] list failed:", e);
-          toast.error(`タスクの読み込みに失敗しました: ${errMsg(e)}`);
+          setLoadError(errMsg(e));
         }
+      })
+      .finally(() => {
+        if (!cancelled) setIsLoadingTasks(false);
       });
     return () => {
       cancelled = true;
     };
-  }, [repo]);
+  }, [repo, retryKey]);
+
+  const handleRetry = () => setRetryKey((k) => k + 1);
 
   // タブ切り替え時のフォーム表示状態管理
   useEffect(() => {
@@ -377,7 +389,30 @@ export default function App() {
             </div>
           )}
 
-          {/* タブナビゲーション */}
+          {/* Loading / Error 表示（Tabs の代わりに render） */}
+          {isLoadingTasks && (
+            <Card>
+              <CardContent className="py-12 flex items-center justify-center gap-3 text-muted-foreground">
+                <Loader2 className="h-5 w-5 animate-spin" />
+                読み込み中...
+              </CardContent>
+            </Card>
+          )}
+
+          {!isLoadingTasks && loadError && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription className="flex items-center justify-between gap-4">
+                <span>タスクの読み込みに失敗しました: {loadError}</span>
+                <Button variant="outline" size="sm" onClick={handleRetry}>
+                  再試行
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
+
+          {/* タブナビゲーション（loading/error でない場合のみ） */}
+          {!isLoadingTasks && !loadError && (
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
               <TabsList className="grid w-full sm:w-auto grid-cols-3">
@@ -436,9 +471,10 @@ export default function App() {
 
 
           </Tabs>
+          )}
 
-          {/* 初回利用時のガイド */}
-          {tasks.length === 0 && (
+          {/* 初回利用時のガイド（load 完了後のみ） */}
+          {!isLoadingTasks && !loadError && tasks.length === 0 && (
             <Alert>
               <CheckCircle className="h-4 w-4" />
               <AlertDescription>
