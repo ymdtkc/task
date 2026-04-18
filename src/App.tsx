@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { TaskForm, Task } from "./components/TaskForm";
@@ -19,14 +19,28 @@ import {
 import { CheckCircle, List, Grid3X3, Calendar, Plus, Download, Upload } from "lucide-react";
 import { toast } from "sonner";
 import { Toaster } from "./components/ui/sonner";
-import { downloadExport, formatRelativeTime, parseImport, mergeAppend } from "./lib/taskIO";
+import { downloadExport, formatRelativeTime, parseImport } from "./lib/taskIO";
+import { createLocalRepo, createSupabaseRepo, TasksRepo } from "./lib/tasksRepo";
 import { AuthButtons } from "./components/AuthButtons";
+import { useAuth } from "./hooks/useAuth";
 
 const LAST_EXPORTED_AT_KEY = "lastExportedAt";
 const UNDO_WINDOW_MS = 8000;
 const RESTORE_TOAST_MS = 2000;
 
+function errMsg(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
+}
+
 export default function App() {
+  const { session } = useAuth();
+  const userId = session?.user?.id;
+
+  const repo: TasksRepo = useMemo(() => {
+    if (userId) return createSupabaseRepo(userId);
+    return createLocalRepo();
+  }, [userId]);
+
   const [tasks, setTasks] = useState<Task[]>([]);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -37,28 +51,27 @@ export default function App() {
   const [pendingImport, setPendingImport] = useState<Task[] | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // ローカルストレージからタスクを読み込み
+  // Load tasks whenever the repo changes (session change = user switch or
+  // logout). Clearing first prevents a brief flash of the previous user's
+  // tasks while the new list is in flight.
   useEffect(() => {
-    const savedTasks = localStorage.getItem("tasks");
-    if (savedTasks) {
-      try {
-        const parsedTasks = JSON.parse(savedTasks).map((task: any) => ({
-          ...task,
-          createdAt: new Date(task.createdAt),
-          // 既存タスクにdurationフィールドがない場合のデフォルト値
-          duration: task.duration || 'quick'
-        }));
-        setTasks(parsedTasks);
-      } catch (error) {
-        console.error("Failed to load tasks from localStorage:", error);
-      }
-    }
-  }, []);
-
-  // タスクをローカルストレージに保存
-  useEffect(() => {
-    localStorage.setItem("tasks", JSON.stringify(tasks));
-  }, [tasks]);
+    let cancelled = false;
+    setTasks([]);
+    repo
+      .list()
+      .then((loaded) => {
+        if (!cancelled) setTasks(loaded);
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          console.error("[tasks] list failed:", e);
+          toast.error(`タスクの読み込みに失敗しました: ${errMsg(e)}`);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [repo]);
 
   // タブ切り替え時のフォーム表示状態管理
   useEffect(() => {
@@ -70,52 +83,80 @@ export default function App() {
     setEditingTask(null);
   }, [activeTab]);
 
-  const handleAddTask = (taskData: Omit<Task, 'id' | 'createdAt'>) => {
-    const newTask: Task = {
+  const handleAddTask = async (taskData: Omit<Task, 'id' | 'createdAt'>) => {
+    // Optimistic: render a temporary task while the backend round-trips,
+    // then swap it for the real one (real id, real createdAt) when the
+    // write completes. On failure, remove the temp.
+    const tempId = `temp-${crypto.randomUUID()}`;
+    const tempTask: Task = {
       ...taskData,
-      id: crypto.randomUUID(),
-      createdAt: new Date()
+      id: tempId,
+      createdAt: new Date(),
     };
-    
-    setTasks(prev => [newTask, ...prev]);
-    // 一覧タブの場合はフォームを開いたまま、その他のタブでは閉じる
+    setTasks(prev => [tempTask, ...prev]);
     if (activeTab !== "list") {
       setShowForm(false);
     } else {
-      // 一覧タブでは追加後もフォームを表示し続ける
       setShowForm(true);
     }
-    toast.success("タスクを追加しました");
+
+    try {
+      const created = await repo.create(taskData);
+      setTasks(prev => prev.map(t => t.id === tempId ? created : t));
+      toast.success("タスクを追加しました");
+    } catch (e) {
+      setTasks(prev => prev.filter(t => t.id !== tempId));
+      toast.error(`追加に失敗しました: ${errMsg(e)}`);
+    }
   };
 
-  const handleUpdateTask = (taskData: Omit<Task, 'id' | 'createdAt'>) => {
+  const handleUpdateTask = async (taskData: Omit<Task, 'id' | 'createdAt'>) => {
     if (!editingTask) return;
-    
-    setTasks(prev => 
-      prev.map(task => 
-        task.id === editingTask.id 
-          ? { ...taskData, id: editingTask.id, createdAt: editingTask.createdAt }
-          : task
-      )
-    );
+    const prevTask = editingTask;
+    setTasks(prev => prev.map(t =>
+      t.id === prevTask.id
+        ? { ...taskData, id: prevTask.id, createdAt: prevTask.createdAt }
+        : t
+    ));
     setEditingTask(null);
-    toast.success("タスクを更新しました");
+
+    try {
+      await repo.update(prevTask.id, taskData);
+      toast.success("タスクを更新しました");
+    } catch (e) {
+      setTasks(prev => prev.map(t => t.id === prevTask.id ? prevTask : t));
+      toast.error(`更新に失敗しました: ${errMsg(e)}`);
+    }
   };
 
-  const handleToggleComplete = (id: string) => {
+  const handleToggleComplete = async (id: string) => {
     const task = tasks.find(t => t.id === id);
     if (!task) return;
     const newCompleted = !task.completed;
     setTasks(prev => prev.map(t => t.id === id ? { ...t, completed: newCompleted } : t));
-    toast.success(newCompleted ? "タスクを完了しました" : "タスクを未完了にしました");
+
+    try {
+      await repo.update(id, { completed: newCompleted });
+      toast.success(newCompleted ? "タスクを完了しました" : "タスクを未完了にしました");
+    } catch (e) {
+      setTasks(prev => prev.map(t => t.id === id ? { ...t, completed: !newCompleted } : t));
+      toast.error(`更新に失敗しました: ${errMsg(e)}`);
+    }
   };
 
-  const handleToggleToday = (id: string) => {
+  const handleToggleToday = async (id: string) => {
     const task = tasks.find(t => t.id === id);
     if (!task) return;
     const newIsToday = !task.isToday;
     setTasks(prev => prev.map(t => t.id === id ? { ...t, isToday: newIsToday } : t));
-    toast.success(newIsToday ? "今日のタスクに追加しました" : "今日のタスクから削除しました");
+
+    try {
+      await repo.update(id, { isToday: newIsToday });
+      toast.success(newIsToday ? "今日のタスクに追加しました" : "今日のタスクから削除しました");
+    } catch (e) {
+      setTasks(prev => prev.map(t => t.id === id ? { ...t, isToday: !newIsToday } : t));
+      toast.error(`更新に失敗しました: ${errMsg(e)}`);
+    }
   };
 
   const handleEditTask = (task: Task) => {
@@ -123,20 +164,38 @@ export default function App() {
     setShowForm(true);
   };
 
-  const handleDeleteTask = (id: string) => {
+  const handleDeleteTask = async (id: string) => {
     const index = tasks.findIndex(t => t.id === id);
     if (index === -1) return;
     const deleted = tasks[index];
 
+    // Optimistic remove first so the UI reacts immediately.
     setTasks(prev => prev.filter(t => t.id !== id));
+
+    try {
+      await repo.remove(id);
+    } catch (e) {
+      // Restore in place and let the user try again.
+      setTasks(prev => [...prev.slice(0, index), deleted, ...prev.slice(index)]);
+      toast.error(`削除に失敗しました: ${errMsg(e)}`);
+      return;
+    }
 
     toast.success("タスクを削除しました", {
       duration: UNDO_WINDOW_MS,
       action: {
         label: "元に戻す",
-        onClick: () => {
-          setTasks(prev => [...prev.slice(0, index), deleted, ...prev.slice(index)]);
-          toast.success("タスクを復元しました", { duration: RESTORE_TOAST_MS });
+        onClick: async () => {
+          // Re-insert preserving id + createdAt via repo.restore, so
+          // sort order is stable and realtime peers see a clean
+          // DELETE-then-INSERT sequence.
+          try {
+            const restored = await repo.restore(deleted);
+            setTasks(prev => [...prev.slice(0, index), restored, ...prev.slice(index)]);
+            toast.success("タスクを復元しました", { duration: RESTORE_TOAST_MS });
+          } catch (e) {
+            toast.error(`復元に失敗しました: ${errMsg(e)}`);
+          }
         },
       },
     });
@@ -177,35 +236,65 @@ export default function App() {
     setPendingImport(result.tasks);
   };
 
-  const handleConfirmImport = (mode: "overwrite" | "append") => {
+  const handleConfirmImport = async (mode: "overwrite" | "append") => {
     if (!pendingImport) return;
     const count = pendingImport.length;
-    if (mode === "overwrite") {
-      setTasks(pendingImport);
-      toast.success(`${count}件のタスクで上書きしました`);
-    } else {
-      setTasks((prev) => mergeAppend(prev, pendingImport));
-      toast.success(`${count}件のタスクを追加しました`);
-    }
+    // Strip id/createdAt from incoming so repo.bulkCreate mints fresh
+    // ones per row. Simpler than carrying JSON-supplied ids across
+    // backends and avoids collisions when importing into a different
+    // account's Supabase namespace.
+    const incoming = pendingImport.map(t => ({
+      title: t.title,
+      description: t.description,
+      importance: t.importance,
+      urgency: t.urgency,
+      duration: t.duration,
+      isToday: t.isToday,
+      completed: t.completed,
+    }));
+    const snapshot = tasks;
     setPendingImport(null);
+
+    try {
+      if (mode === "overwrite") {
+        await Promise.all(snapshot.map(t => repo.remove(t.id)));
+        const created = await repo.bulkCreate(incoming);
+        setTasks(created);
+        toast.success(`${count}件のタスクで上書きしました`);
+      } else {
+        const created = await repo.bulkCreate(incoming);
+        setTasks(prev => [...created, ...prev]);
+        toast.success(`${count}件のタスクを追加しました`);
+      }
+    } catch (e) {
+      toast.error(`インポートに失敗しました: ${errMsg(e)}`);
+      // Reconcile against source of truth so the screen reflects what
+      // actually persisted.
+      repo.list().then(setTasks).catch(() => {});
+    }
   };
 
-  const handleMoveTask = (taskId: string, newImportance: number, newUrgency: number) => {
-    setTasks(prev => 
-      prev.map(task => 
-        task.id === taskId 
-          ? { ...task, importance: newImportance, urgency: newUrgency }
-          : task
-      )
-    );
-    
+  const handleMoveTask = async (taskId: string, newImportance: number, newUrgency: number) => {
     const task = tasks.find(t => t.id === taskId);
-    if (task) {
+    if (!task) return;
+    const oldImportance = task.importance;
+    const oldUrgency = task.urgency;
+    setTasks(prev => prev.map(t =>
+      t.id === taskId ? { ...t, importance: newImportance, urgency: newUrgency } : t
+    ));
+
+    try {
+      await repo.update(taskId, { importance: newImportance, urgency: newUrgency });
       const importanceLabels = { 1: "低", 2: "中", 3: "高" };
       const urgencyLabels = { 1: "低", 2: "中", 3: "高" };
       toast.success(
         `${task.title} を移動しました\n重要度: ${importanceLabels[newImportance as keyof typeof importanceLabels]}, 緊急度: ${urgencyLabels[newUrgency as keyof typeof urgencyLabels]}`
       );
+    } catch (e) {
+      setTasks(prev => prev.map(t =>
+        t.id === taskId ? { ...t, importance: oldImportance, urgency: oldUrgency } : t
+      ));
+      toast.error(`移動に失敗しました: ${errMsg(e)}`);
     }
   };
 
@@ -305,7 +394,7 @@ export default function App() {
                   マトリクス
                 </TabsTrigger>
               </TabsList>
-              
+
               {!showForm && (
                 <Button onClick={() => setShowForm(true)} className="flex items-center gap-2">
                   <Plus className="h-4 w-4" />

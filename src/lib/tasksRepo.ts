@@ -11,6 +11,11 @@ export interface TasksRepo {
   create(input: Omit<Task, "id" | "createdAt">): Promise<Task>;
   update(id: string, patch: Partial<Omit<Task, "id" | "createdAt">>): Promise<void>;
   remove(id: string): Promise<void>;
+  // Re-insert a previously existing task, preserving its id and
+  // createdAt so that sort order stays stable after a delete → undo
+  // round-trip. The row id column has gen_random_uuid() as its DEFAULT,
+  // which yields to an explicit value when provided.
+  restore(task: Task): Promise<Task>;
   // Atomic bulk insert — either every row lands or none do. Used by the
   // Step 6 migration flow to avoid partial uploads.
   bulkCreate(inputs: Omit<Task, "id" | "createdAt">[]): Promise<Task[]>;
@@ -58,6 +63,10 @@ export function createLocalRepo(): TasksRepo {
     },
     async remove(id) {
       saveLocal(loadLocal().filter((t) => t.id !== id));
+    },
+    async restore(task) {
+      saveLocal([task, ...loadLocal()]);
+      return task;
     },
     async bulkCreate(inputs) {
       const now = new Date();
@@ -171,6 +180,27 @@ export function createSupabaseRepo(userId: string): TasksRepo {
     async remove(id) {
       const { error } = await client.from("tasks").delete().eq("id", id);
       if (error) throw error;
+    },
+
+    async restore(task) {
+      const { data, error } = await client
+        .from("tasks")
+        .insert({
+          id: task.id,
+          user_id: userId,
+          title: task.title,
+          description: task.description,
+          importance: task.importance,
+          urgency: task.urgency,
+          duration: task.duration,
+          is_today: task.isToday,
+          completed: task.completed,
+          created_at: task.createdAt.toISOString(),
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      return fromRow(data);
     },
 
     async bulkCreate(inputs) {
