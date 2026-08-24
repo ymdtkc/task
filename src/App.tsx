@@ -24,8 +24,10 @@ import { downloadExport, formatRelativeTime, parseImport } from "./lib/taskIO";
 import { createLocalRepo, createSupabaseRepo, TasksRepo } from "./lib/tasksRepo";
 import { AuthButtons } from "./components/AuthButtons";
 import { MigrationPrompt } from "./components/MigrationPrompt";
+import { TalkMemosSection } from "./components/TalkMemosSection";
 import { useAuth } from "./hooks/useAuth";
 import { useRealtimeTasks } from "./hooks/useRealtimeTasks";
+import { useTalkMemos } from "./hooks/useTalkMemos";
 
 const LAST_EXPORTED_AT_KEY = "lastExportedAt";
 const UNDO_WINDOW_MS = 8000;
@@ -36,7 +38,8 @@ function errMsg(e: unknown): string {
 }
 
 export default function App() {
-  const { session } = useAuth();
+  const auth = useAuth();
+  const { session } = auth;
   const userId = session?.user?.id;
 
   const repo: TasksRepo = useMemo(() => {
@@ -62,6 +65,8 @@ export default function App() {
   // Clearing first prevents a brief flash of the previous user's tasks
   // while the new list is in flight.
   useEffect(() => {
+    if (auth.isLoading) return;
+
     let cancelled = false;
     setIsLoadingTasks(true);
     setLoadError(null);
@@ -83,11 +88,12 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [repo, retryKey]);
+  }, [auth.isLoading, repo, retryKey]);
 
   const handleRetry = () => setRetryKey((k) => k + 1);
 
   useRealtimeTasks(userId ?? null, setTasks);
+  const talkMemos = useTalkMemos(userId ?? null);
 
   const handleMigrate = async (localTasks: Task[]) => {
     try {
@@ -330,6 +336,17 @@ export default function App() {
   const todaysTasks = tasks.filter(task => task.isToday);
   const completedCount = tasks.filter(task => task.completed).length;
 
+  if (auth.isLoading) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex items-center gap-2 text-muted-foreground" role="status">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          ログイン状態を確認中...
+        </div>
+      </div>
+    );
+  }
+
   return (
     <DndProvider backend={HTML5Backend}>
       <div className="min-h-screen bg-background">
@@ -365,7 +382,7 @@ export default function App() {
                 className="hidden"
                 onChange={handleFileSelected}
               />
-              <AuthButtons />
+              <AuthButtons auth={auth} />
             </div>
           </div>
 
@@ -398,6 +415,16 @@ export default function App() {
             cloudIsEmpty={tasks.length === 0}
             onMigrate={handleMigrate}
           />
+
+          {!userId && (
+            <Alert className="mt-4">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>
+                現在は未ログインです。タスクはこの端末だけに保存されます。
+                どの端末でも同じ内容を見るには、右上の「ログイン」をご利用ください。
+              </AlertDescription>
+            </Alert>
+          )}
         </div>
 
         <div className="space-y-6">
@@ -490,6 +517,15 @@ export default function App() {
                 onEdit={handleEditTask}
                 onDelete={handleDeleteTask}
                 onMoveTask={handleMoveTask}
+              />
+              <TalkMemosSection
+                isSignedIn={Boolean(userId)}
+                memos={talkMemos.memos}
+                isLoading={talkMemos.isLoading}
+                error={talkMemos.error}
+                onRetry={talkMemos.retry}
+                onAdd={talkMemos.addMemo}
+                onDelete={talkMemos.deleteMemo}
               />
             </TabsContent>
 

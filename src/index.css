@@ -4888,3 +4888,466 @@ html {
     opacity: 0;
   }
 }
+
+/* ─────────────────────────────────────────────────────────────
+   Talk memos
+   Semantic styles live here because this project ships a generated
+   utility stylesheet rather than compiling newly introduced classes.
+   ───────────────────────────────────────────────────────────── */
+
+.talk-memos {
+  margin-top: 3rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--border);
+}
+
+.talk-memos__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.talk-memos__heading {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  min-width: 0;
+}
+
+.talk-memos__heading-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  flex: 0 0 auto;
+  border-radius: .75rem;
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+.talk-memos__heading-icon svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.talk-memos__title {
+  margin: 0;
+}
+
+.talk-memos__subtitle {
+  margin: .3rem 0 0;
+  color: var(--muted-foreground);
+  font-size: .875rem;
+  line-height: 1.45;
+}
+
+.talk-memos__notice,
+.talk-memos__error {
+  display: flex;
+  align-items: flex-start;
+  gap: .75rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--card);
+}
+
+.talk-memos__notice > svg,
+.talk-memos__error > svg {
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-top: .1rem;
+  flex: 0 0 auto;
+}
+
+.talk-memos__notice > svg {
+  color: var(--muted-foreground);
+}
+
+.talk-memos__notice-title,
+.talk-memos__notice-text,
+.talk-memos__error p {
+  margin: 0;
+}
+
+.talk-memos__notice-title {
+  font-weight: 600;
+}
+
+.talk-memos__notice-text {
+  margin-top: .25rem;
+  color: var(--muted-foreground);
+  font-size: .875rem;
+  line-height: 1.5;
+}
+
+.talk-memos__status,
+.talk-memos__empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .6rem;
+  min-height: 9rem;
+  padding: 1.5rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  color: var(--muted-foreground);
+  text-align: center;
+}
+
+.talk-memos__status svg,
+.talk-memos__empty svg {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.talk-memos__spinner {
+  animation: talk-memos-spin .9s linear infinite;
+}
+
+.talk-memos__empty {
+  flex-direction: column;
+}
+
+.talk-memos__empty p {
+  margin: .25rem 0 0;
+  color: var(--foreground);
+  font-weight: 600;
+}
+
+.talk-memos__empty span {
+  font-size: .875rem;
+}
+
+.talk-memos__error {
+  border-color: color-mix(in srgb, var(--destructive) 35%, transparent);
+  color: var(--destructive);
+}
+
+.talk-memos__error-content {
+  display: flex;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+}
+
+.talk-memos__groups {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+
+.talk-memos__group {
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: .75rem;
+  background: var(--card);
+}
+
+.talk-memos__group--3 {
+  border-color: #fecaca;
+  background: #fef2f2;
+}
+
+.talk-memos__group--2 {
+  border-color: #fde68a;
+  background: #fffbeb;
+}
+
+.talk-memos__group--1 {
+  border-color: #bbf7d0;
+  background: #f0fdf4;
+}
+
+.talk-memos__group-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: .75rem;
+  margin-bottom: .9rem;
+}
+
+.talk-memos__group-title {
+  margin: 0;
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.talk-memos__group-header p {
+  margin: .2rem 0 0;
+  color: var(--muted-foreground);
+  font-size: .75rem;
+  line-height: 1.4;
+}
+
+.talk-memos__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.75rem;
+  height: 1.5rem;
+  padding: 0 .45rem;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  font-size: .75rem;
+  font-weight: 600;
+}
+
+.talk-memos__group--3 .talk-memos__group-title,
+.talk-memos__group--3 .talk-memos__count {
+  color: #991b1b;
+}
+
+.talk-memos__group--2 .talk-memos__group-title,
+.talk-memos__group--2 .talk-memos__count {
+  color: #92400e;
+}
+
+.talk-memos__group--1 .talk-memos__group-title,
+.talk-memos__group--1 .talk-memos__count {
+  color: #166534;
+}
+
+.talk-memos__list {
+  display: flex;
+  flex-direction: column;
+  gap: .65rem;
+}
+
+.talk-memos__item {
+  display: block;
+  width: 100%;
+  min-width: 0;
+  padding: .8rem;
+  border: 1px solid var(--border);
+  border-radius: .6rem;
+  color: var(--card-foreground);
+  background: var(--card);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 4%);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+}
+
+.talk-memos__item:hover {
+  border-color: var(--ring);
+  box-shadow: 0 3px 10px rgb(0 0 0 / 8%);
+  transform: translateY(-1px);
+}
+
+.talk-memos__item:focus-visible,
+.talk-memos__importance-option:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--ring) 45%, transparent);
+  outline-offset: 2px;
+}
+
+.talk-memos__recipient {
+  display: flex;
+  align-items: center;
+  gap: .45rem;
+  min-width: 0;
+  font-weight: 600;
+}
+
+.talk-memos__recipient svg {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+  color: var(--muted-foreground);
+}
+
+.talk-memos__recipient span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.talk-memos__preview {
+  display: -webkit-box;
+  margin-top: .4rem;
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: .875rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.talk-memos__group-empty {
+  margin: 0;
+  padding: 1.25rem .5rem;
+  color: var(--muted-foreground);
+  font-size: .875rem;
+  text-align: center;
+}
+
+.talk-memos__dialog {
+  max-width: 36rem;
+}
+
+.talk-memos__form,
+.talk-memos__field {
+  display: flex;
+  flex-direction: column;
+}
+
+.talk-memos__form {
+  gap: 1.25rem;
+}
+
+.talk-memos__field {
+  gap: .55rem;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.talk-memos__legend {
+  margin-bottom: .55rem;
+  font-size: .875rem;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.talk-memos__importance-picker {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: .5rem;
+}
+
+.talk-memos__importance-option {
+  min-height: 2.5rem;
+  padding: .5rem .75rem;
+  border: 1px solid var(--border);
+  border-radius: .5rem;
+  color: var(--foreground);
+  background: var(--background);
+  font: inherit;
+  font-size: .875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color .15s ease, background-color .15s ease,
+    color .15s ease;
+}
+
+.talk-memos__importance-option:hover {
+  background: var(--accent);
+}
+
+.talk-memos__importance-option--3[data-selected="true"] {
+  border-color: #ef4444;
+  color: #991b1b;
+  background: #fee2e2;
+}
+
+.talk-memos__importance-option--2[data-selected="true"] {
+  border-color: #f59e0b;
+  color: #92400e;
+  background: #fef3c7;
+}
+
+.talk-memos__importance-option--1[data-selected="true"] {
+  border-color: #22c55e;
+  color: #166534;
+  background: #dcfce7;
+}
+
+.talk-memos__detail-content {
+  max-height: 60vh;
+  padding: 1rem;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: .6rem;
+  background: var(--muted);
+  line-height: 1.65;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.dark .talk-memos__group--3 {
+  border-color: rgb(127 29 29 / 70%);
+  background: rgb(127 29 29 / 18%);
+}
+
+.dark .talk-memos__group--2 {
+  border-color: rgb(146 64 14 / 70%);
+  background: rgb(146 64 14 / 18%);
+}
+
+.dark .talk-memos__group--1 {
+  border-color: rgb(22 101 52 / 70%);
+  background: rgb(22 101 52 / 18%);
+}
+
+.dark .talk-memos__group--3 .talk-memos__group-title,
+.dark .talk-memos__group--3 .talk-memos__count {
+  color: #fca5a5;
+}
+
+.dark .talk-memos__group--2 .talk-memos__group-title,
+.dark .talk-memos__group--2 .talk-memos__count {
+  color: #fcd34d;
+}
+
+.dark .talk-memos__group--1 .talk-memos__group-title,
+.dark .talk-memos__group--1 .talk-memos__count {
+  color: #86efac;
+}
+
+.dark .talk-memos__importance-option--3[data-selected="true"] {
+  color: #fecaca;
+  background: rgb(127 29 29 / 55%);
+}
+
+.dark .talk-memos__importance-option--2[data-selected="true"] {
+  color: #fde68a;
+  background: rgb(146 64 14 / 55%);
+}
+
+.dark .talk-memos__importance-option--1[data-selected="true"] {
+  color: #bbf7d0;
+  background: rgb(22 101 52 / 55%);
+}
+
+@media (min-width: 768px) {
+  .talk-memos__groups {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 479px) {
+  .talk-memos__header > button {
+    width: 100%;
+  }
+
+  .talk-memos__error-content {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .talk-memos__item {
+    transition: none;
+  }
+
+  .talk-memos__item:hover {
+    transform: none;
+  }
+}
+
+@keyframes talk-memos-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
