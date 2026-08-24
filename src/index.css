@@ -4890,10 +4890,50 @@ html {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   Talk memos
+   Quick entry and talk memos
    Semantic styles live here because this project ships a generated
    utility stylesheet rather than compiling newly introduced classes.
    ───────────────────────────────────────────────────────────── */
+
+.quick-entry__label {
+  margin: 0 0 .6rem;
+  color: var(--muted-foreground);
+  font-size: .875rem;
+  font-weight: 600;
+}
+
+.quick-entry__switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .6rem;
+}
+
+.quick-entry__switch > button {
+  width: 100%;
+  min-height: 2.75rem;
+}
+
+.quick-entry__hint {
+  margin: .5rem 0 0;
+  color: var(--muted-foreground);
+  font-size: .75rem;
+}
+
+.talk-memo-form__top-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(12rem, 1fr);
+  align-items: end;
+  gap: 1rem;
+}
+
+.talk-memo-form__actions {
+  display: flex;
+  gap: .5rem;
+}
+
+.talk-memo-form__submit {
+  flex: 1;
+}
 
 .talk-memos {
   margin-top: 3rem;
@@ -5326,13 +5366,15 @@ html {
 }
 
 @media (max-width: 479px) {
-  .talk-memos__header > button {
-    width: 100%;
-  }
-
   .talk-memos__error-content {
     align-items: stretch;
     flex-direction: column;
+  }
+}
+
+@media (max-width: 640px) {
+  .talk-memo-form__top-row {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 

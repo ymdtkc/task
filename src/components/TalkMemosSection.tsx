@@ -1,18 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
-import type { FormEvent } from "react";
 import {
   AlertCircle,
   Loader2,
   MessageSquareText,
-  Plus,
   Trash2,
   UserRound,
 } from "lucide-react";
-import type {
-  NewTalkMemo,
-  TalkMemo,
-  TalkMemoImportance,
-} from "../types/talkMemo";
+import type { TalkMemo, TalkMemoImportance } from "../types/talkMemo";
 import { Button } from "./ui/button";
 import {
   Dialog,
@@ -22,9 +16,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from "./ui/dialog";
-import { Input } from "./ui/input";
-import { Label } from "./ui/label";
-import { Textarea } from "./ui/textarea";
 
 const IMPORTANCE_GROUPS: Array<{
   value: TalkMemoImportance;
@@ -42,7 +33,6 @@ export interface TalkMemosSectionProps {
   isLoading: boolean;
   error: string | null;
   onRetry: () => void;
-  onAdd: (input: NewTalkMemo) => Promise<void>;
   onDelete: (id: string) => Promise<void>;
 }
 
@@ -52,14 +42,8 @@ export function TalkMemosSection({
   isLoading,
   error,
   onRetry,
-  onAdd,
   onDelete,
 }: TalkMemosSectionProps) {
-  const [isAddOpen, setIsAddOpen] = useState(false);
-  const [recipient, setRecipient] = useState("");
-  const [content, setContent] = useState("");
-  const [importance, setImportance] = useState<TalkMemoImportance>(2);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedMemo, setSelectedMemo] = useState<TalkMemo | null>(null);
 
   const sortedMemos = useMemo(
@@ -78,40 +62,6 @@ export function TalkMemosSection({
       setSelectedMemo(null);
     }
   }, [memos, selectedMemo]);
-
-  const resetForm = () => {
-    setRecipient("");
-    setContent("");
-    setImportance(2);
-  };
-
-  const handleAddOpenChange = (open: boolean) => {
-    if (!open && !isSubmitting) resetForm();
-    setIsAddOpen(open);
-  };
-
-  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    const trimmedRecipient = recipient.trim();
-    const trimmedContent = content.trim();
-    if (!trimmedRecipient || !trimmedContent || isSubmitting) return;
-
-    setIsSubmitting(true);
-    try {
-      await onAdd({
-        recipient: trimmedRecipient,
-        content: trimmedContent,
-        importance,
-      });
-      resetForm();
-      setIsAddOpen(false);
-    } catch {
-      // The data hook has already shown a useful error toast. Keeping the
-      // dialog open lets the user retry without retyping the memo.
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
   const handleDelete = () => {
     if (!selectedMemo) return;
@@ -136,13 +86,6 @@ export function TalkMemosSection({
             </p>
           </div>
         </div>
-
-        {isSignedIn && (
-          <Button onClick={() => setIsAddOpen(true)}>
-            <Plus aria-hidden="true" />
-            追加
-          </Button>
-        )}
       </div>
 
       {!isSignedIn ? (
@@ -174,7 +117,7 @@ export function TalkMemosSection({
         <div className="talk-memos__empty">
           <MessageSquareText aria-hidden="true" />
           <p>まだメモはありません</p>
-          <span>「追加」から、次に話したいことを残せます。</span>
+          <span>画面上部の「話したいこと」から登録できます。</span>
         </div>
       ) : (
         <div className="talk-memos__groups">
@@ -226,82 +169,6 @@ export function TalkMemosSection({
         </div>
       )}
 
-      <Dialog open={isAddOpen} onOpenChange={handleAddOpenChange}>
-        <DialogContent className="talk-memos__dialog">
-          <DialogHeader>
-            <DialogTitle>話したいことを追加</DialogTitle>
-            <DialogDescription>
-              相手と内容、重要度だけを入力します。
-            </DialogDescription>
-          </DialogHeader>
-
-          <form className="talk-memos__form" onSubmit={handleSubmit}>
-            <div className="talk-memos__field">
-              <Label htmlFor="talk-memo-recipient">誰に</Label>
-              <Input
-                id="talk-memo-recipient"
-                value={recipient}
-                onChange={(event) => setRecipient(event.target.value)}
-                placeholder="例：田中さん"
-                maxLength={100}
-                autoFocus
-                required
-              />
-            </div>
-
-            <div className="talk-memos__field">
-              <Label htmlFor="talk-memo-content">話したいこと</Label>
-              <Textarea
-                id="talk-memo-content"
-                value={content}
-                onChange={(event) => setContent(event.target.value)}
-                placeholder="話したい内容を入力してください"
-                maxLength={4000}
-                rows={5}
-                required
-              />
-            </div>
-
-            <fieldset className="talk-memos__field">
-              <legend className="talk-memos__legend">重要度</legend>
-              <div className="talk-memos__importance-picker">
-                {IMPORTANCE_GROUPS.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    className={`talk-memos__importance-option talk-memos__importance-option--${option.value}`}
-                    data-selected={importance === option.value}
-                    aria-pressed={importance === option.value}
-                    onClick={() => setImportance(option.value)}
-                  >
-                    {option.label}
-                  </button>
-                ))}
-              </div>
-            </fieldset>
-
-            <DialogFooter>
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => handleAddOpenChange(false)}
-                disabled={isSubmitting}
-              >
-                キャンセル
-              </Button>
-              <Button
-                type="submit"
-                disabled={
-                  !recipient.trim() || !content.trim() || isSubmitting
-                }
-              >
-                {isSubmitting ? "追加中..." : "追加する"}
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-
       <Dialog
         open={selectedMemo !== null}
         onOpenChange={(open) => {
@@ -351,4 +218,3 @@ export function TalkMemosSection({
     </section>
   );
 }
-
