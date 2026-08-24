@@ -178,7 +178,7 @@ export function TaskMatrix({
       <div>
         <h2>アイゼンハワーマトリクス</h2>
         <p className="text-muted-foreground">
-          重要度と緊急度でタスクを分類して管理します（ドラッグ&ドロップで移動可能）
+          パソコンではドラッグして移動できます。スマホでは編集から重要度・緊急度を変更できます。
         </p>
       </div>
 

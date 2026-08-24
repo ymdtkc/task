@@ -53,7 +53,7 @@ export function TodaysTasks({ tasks, onToggleComplete, onToggleToday, onEdit, on
           <CardDescription>
             今日取り組むタスクを管理します
           </CardDescription>
-          <div className="flex gap-2 mt-2">
+          <div className="today-summary__badges">
             <Badge variant="outline" className="text-blue-800 border-blue-300">
               全て: {todaysTasks.length}
             </Badge>

@@ -99,13 +99,13 @@ export function MigrationPrompt({
       <Alert className="mt-2">
         <Upload className="h-4 w-4" />
         <AlertDescription className="flex flex-wrap items-center justify-between gap-2">
-          <span>ローカルに {localTasks.length} 件の未移行タスクがあります</span>
+          <span>この端末に、まだ引き継いでいないタスクが {localTasks.length} 件あります</span>
           <Button
             variant="outline"
             size="sm"
             onClick={() => setDialogOpen(true)}
           >
-            復元
+            引き継ぐ
           </Button>
         </AlertDescription>
       </Alert>
@@ -119,10 +119,10 @@ export function MigrationPrompt({
       >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>ローカルのタスクをクラウドに移行</DialogTitle>
+            <DialogTitle>この端末のタスクを引き継ぎますか？</DialogTitle>
             <DialogDescription>
-              ローカルに {localTasks.length} 件のタスクが見つかりました。
-              クラウドに移行すると、別のデバイスからも同じタスクを見られるようになります。
+              {localTasks.length} 件のタスクを引き継ぐと、パソコンやスマートフォンでも
+              同じタスクを確認できます。
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-2">
@@ -131,10 +131,10 @@ export function MigrationPrompt({
               onClick={handleSkip}
               disabled={isMigrating}
             >
-              スキップ
+              今はしない
             </Button>
             <Button onClick={handleMigrate} disabled={isMigrating}>
-              {isMigrating ? "移行中..." : "移行する"}
+              {isMigrating ? "引き継ぎ中..." : "引き継ぐ"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -142,3 +142,4 @@ export function MigrationPrompt({
     </>
   );
 }
+
