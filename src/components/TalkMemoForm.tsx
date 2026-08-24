@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useState } from "react";
 import type { FormEvent } from "react";
-import { MessageSquareText, X } from "lucide-react";
+import { MessageSquareText } from "lucide-react";
 import type { NewTalkMemo, TalkMemoImportance } from "../types/talkMemo";
 import { Button } from "./ui/button";
 import {
@@ -25,26 +25,15 @@ const IMPORTANCE_OPTIONS: Array<{
 
 interface TalkMemoFormProps {
   onSubmit: (input: NewTalkMemo) => Promise<void>;
-  onCancel?: () => void;
-  showCloseButton?: boolean;
-  isActive: boolean;
 }
 
 export function TalkMemoForm({
   onSubmit,
-  onCancel,
-  showCloseButton,
-  isActive,
 }: TalkMemoFormProps) {
   const [recipient, setRecipient] = useState("");
   const [content, setContent] = useState("");
   const [importance, setImportance] = useState<TalkMemoImportance>(2);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const recipientInputRef = useRef<HTMLInputElement>(null);
-
-  useEffect(() => {
-    if (isActive) recipientInputRef.current?.focus();
-  }, [isActive]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -77,18 +66,6 @@ export function TalkMemoForm({
             <MessageSquareText className="h-5 w-5" />
             話したいことを追加
           </CardTitle>
-          {showCloseButton && onCancel && (
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={onCancel}
-              className="h-auto p-1"
-              aria-label="入力欄を閉じる"
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          )}
         </div>
         <CardDescription>
           相手・内容・重要度だけを、すぐにメモできます
@@ -101,7 +78,6 @@ export function TalkMemoForm({
             <div className="talk-memos__field">
               <Label htmlFor="quick-talk-memo-recipient">誰に</Label>
               <Input
-                ref={recipientInputRef}
                 id="quick-talk-memo-recipient"
                 value={recipient}
                 onChange={(event) => setRecipient(event.target.value)}

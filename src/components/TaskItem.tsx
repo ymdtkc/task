@@ -53,7 +53,8 @@ export function TaskItem({
           <Checkbox
             checked={task.completed}
             onCheckedChange={() => onToggleComplete(task.id)}
-            className="mt-1"
+            className="task-item__checkbox mt-1"
+            aria-label={task.completed ? `${task.title}を未完了に戻す` : `${task.title}を完了にする`}
           />
           <div className="flex-1 min-w-0">
             <CardTitle className={`${task.completed ? 'line-through' : ''}`}>
@@ -65,12 +66,13 @@ export function TaskItem({
               </CardDescription>
             )}
           </div>
-          <div className="flex gap-1">
+          <div className="task-item__actions">
             <Button
               variant="ghost"
               size="sm"
               onClick={() => onEdit(task)}
-              className="h-8 w-8 p-0"
+              className="task-item__icon-button p-0"
+              aria-label={`${task.title}を編集`}
             >
               <Edit2 className="h-4 w-4" />
             </Button>
@@ -78,7 +80,8 @@ export function TaskItem({
               variant="ghost"
               size="sm"
               onClick={() => onDelete(task.id)}
-              className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+              className="task-item__icon-button p-0 text-destructive hover:text-destructive"
+              aria-label={`${task.title}を削除`}
             >
               <Trash2 className="h-4 w-4" />
             </Button>
@@ -86,8 +89,8 @@ export function TaskItem({
         </div>
       </CardHeader>
       <CardContent className="pt-0">
-        <div className="flex items-center justify-between">
-          <div className="flex gap-2">
+        <div className="task-item__footer">
+          <div className="task-item__badges">
             {showImportanceUrgency && (
               <Badge className={`${importanceColors[task.importance as keyof typeof importanceColors]} flex items-center gap-1`}>
                 <Star className="h-3 w-3" />
@@ -118,7 +121,7 @@ export function TaskItem({
               variant={task.isToday ? "default" : "outline"}
               size="sm"
               onClick={() => onToggleToday(task.id)}
-              className="flex items-center gap-1"
+              className="task-item__today-button flex items-center gap-1"
             >
               <Calendar className="h-3 w-3" />
               {task.isToday ? "今日から削除" : "今日に追加"}

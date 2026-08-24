@@ -4890,33 +4890,124 @@ html {
 }
 
 /* ─────────────────────────────────────────────────────────────
-   Quick entry and talk memos
+   Entry panels and talk memos
    Semantic styles live here because this project ships a generated
    utility stylesheet rather than compiling newly introduced classes.
    ───────────────────────────────────────────────────────────── */
 
-.quick-entry__label {
-  margin: 0 0 .6rem;
+.entry-panels {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
+  gap: 1.5rem;
+  scroll-margin-top: 1rem;
+}
+
+.entry-panels__panel {
+  min-width: 0;
+}
+
+.entry-panels__panel > [data-slot="card"] {
+  height: 100%;
+}
+
+.entry-panels__status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .75rem;
+  min-height: 18rem;
+  padding-top: 3rem;
+  padding-bottom: 3rem;
+  text-align: center;
+}
+
+.entry-panels__status--error {
+  flex-direction: column;
+  color: var(--destructive);
+}
+
+.entry-panels__status p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.entry-panels__login-note {
+  display: flex;
+  align-items: flex-start;
+  gap: .75rem;
+  padding: 1rem;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
   color: var(--muted-foreground);
-  font-size: .875rem;
+  background: var(--muted);
+}
+
+.entry-panels__login-note > svg {
+  width: 1.25rem;
+  height: 1.25rem;
+  margin-top: .1rem;
+  flex: 0 0 auto;
+}
+
+.entry-panels__login-note p {
+  margin: 0;
+  color: var(--foreground);
   font-weight: 600;
 }
 
-.quick-entry__switch {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: .6rem;
+.entry-panels__login-note span {
+  display: block;
+  margin-top: .25rem;
+  font-size: .875rem;
+  line-height: 1.5;
 }
 
-.quick-entry__switch > button {
-  width: 100%;
-  min-height: 2.75rem;
+.app-stats,
+.today-summary__badges,
+.task-item__actions,
+.task-item__badges {
+  display: flex;
+  flex-wrap: wrap;
 }
 
-.quick-entry__hint {
-  margin: .5rem 0 0;
-  color: var(--muted-foreground);
-  font-size: .75rem;
+.app-stats {
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.today-summary__badges,
+.task-item__badges {
+  gap: .5rem;
+}
+
+.today-summary__badges {
+  margin-top: .5rem;
+}
+
+.task-item__actions {
+  flex: 0 0 auto;
+  gap: .25rem;
+}
+
+.task-item__icon-button {
+  width: 2.25rem;
+  height: 2.25rem;
+}
+
+.task-item__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: .75rem;
+}
+
+.task-item__badges {
+  min-width: 0;
+}
+
+.task-item__today-button {
+  flex: 0 0 auto;
 }
 
 .talk-memo-form__top-row {
@@ -5365,6 +5456,12 @@ html {
   }
 }
 
+@media (min-width: 1024px) {
+  .entry-panels {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 479px) {
   .talk-memos__error-content {
     align-items: stretch;
@@ -5375,6 +5472,35 @@ html {
 @media (max-width: 640px) {
   .talk-memo-form__top-row {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .app-tabs__trigger,
+  .task-item__icon-button,
+  .task-item__today-button {
+    min-height: 2.75rem;
+  }
+
+  .app-tabs__list {
+    min-height: 2.75rem;
+    height: auto;
+  }
+
+  .task-item__icon-button {
+    width: 2.75rem;
+  }
+
+  .task-item__checkbox {
+    width: 1.5rem;
+    height: 1.5rem;
+  }
+
+  .task-item__footer {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .task-item__today-button {
+    width: 100%;
   }
 }
 

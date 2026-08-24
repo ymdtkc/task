@@ -25,10 +25,15 @@ import {
   List,
   Loader2,
   MessageSquareText,
-  Plus,
   Upload,
 } from "lucide-react";
-import { Card, CardContent } from "./components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "./components/ui/card";
 import { toast } from "sonner";
 import { Toaster } from "./components/ui/sonner";
 import { downloadExport, formatRelativeTime, parseImport } from "./lib/taskIO";
@@ -44,7 +49,6 @@ import { useTalkMemos } from "./hooks/useTalkMemos";
 const LAST_EXPORTED_AT_KEY = "lastExportedAt";
 const UNDO_WINDOW_MS = 8000;
 const RESTORE_TOAST_MS = 2000;
-type EntryKind = "task" | "memo";
 
 function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
@@ -93,14 +97,13 @@ export default function App() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
-  const [showForm, setShowForm] = useState(false);
-  const [entryKind, setEntryKind] = useState<EntryKind>("task");
   const [activeTab, setActiveTab] = useState("list");
   const [lastExportedAt, setLastExportedAt] = useState<string | null>(() =>
     localStorage.getItem(LAST_EXPORTED_AT_KEY)
   );
   const [pendingImport, setPendingImport] = useState<Task[] | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const entryPanelsRef = useRef<HTMLElement>(null);
 
   // Sonner keeps active notifications outside React. Clear them before the
   // next account's UI is mounted so a task title or undo action from the
@@ -199,22 +202,6 @@ export default function App() {
     }
   };
 
-  // タブ切り替え時のフォーム表示状態管理
-  useEffect(() => {
-    if (activeTab === "list") {
-      setEntryKind("task");
-      setShowForm(true);
-    } else {
-      setShowForm(false);
-    }
-    setEditingTask(null);
-  }, [activeTab]);
-
-  useEffect(() => {
-    setEntryKind("task");
-    setShowForm(activeTab === "list");
-  }, [currentTaskOwnerId]);
-
   const handleAddTask = async (taskData: Omit<Task, 'id' | 'createdAt'>) => {
     const operationOwnerId = currentTaskOwnerId;
     // Optimistic: render a temporary task while the backend round-trips,
@@ -227,11 +214,6 @@ export default function App() {
       createdAt: new Date(),
     };
     updateTasksForOwner(operationOwnerId, prev => [tempTask, ...prev]);
-    if (activeTab !== "list") {
-      setShowForm(false);
-    } else {
-      setShowForm(true);
-    }
 
     try {
       await repo.create(taskData);
@@ -317,9 +299,18 @@ export default function App() {
   };
 
   const handleEditTask = (task: Task) => {
-    setEntryKind("task");
     setEditingTask(task);
-    setShowForm(true);
+    requestAnimationFrame(() => {
+      const entryPanels = entryPanelsRef.current;
+      if (!entryPanels) return;
+
+      entryPanels.scrollIntoView({ behavior: "smooth", block: "start" });
+      requestAnimationFrame(() => {
+        entryPanels
+          .querySelector<HTMLInputElement>("#title")
+          ?.focus({ preventScroll: true });
+      });
+    });
   };
 
   const handleDeleteTask = async (id: string) => {
@@ -372,7 +363,6 @@ export default function App() {
 
   const handleCancelEdit = () => {
     setEditingTask(null);
-    setShowForm(false);
   };
 
   const handleExport = () => {
@@ -551,7 +541,7 @@ export default function App() {
           )}
 
           {tasks.length > 0 && (
-            <div className="flex gap-4 mt-4">
+            <div className="app-stats">
               <div className="flex items-center gap-2 text-muted-foreground">
                 <List className="h-4 w-4" />
                 全タスク: {tasks.length}
@@ -587,119 +577,86 @@ export default function App() {
         </div>
 
         <div className="space-y-6">
-          {!isLoadingTasks && !loadError && !editingTask && (
-            <section className="quick-entry" aria-labelledby="quick-entry-title">
-              <p id="quick-entry-title" className="quick-entry__label">
-                追加する内容を選ぶ
-              </p>
-              <div className="quick-entry__switch">
-                <Button
-                  type="button"
-                  variant={showForm && entryKind === "task" ? "default" : "outline"}
-                  onClick={() => {
-                    setEntryKind("task");
-                    setShowForm(true);
-                  }}
-                >
-                  <Plus aria-hidden="true" />
-                  タスク
-                </Button>
-                <Button
-                  type="button"
-                  variant={showForm && entryKind === "memo" ? "default" : "outline"}
-                  onClick={() => {
-                    setEntryKind("memo");
-                    setShowForm(true);
-                  }}
-                  disabled={!userId}
-                  title={!userId ? "Googleログイン後に利用できます" : undefined}
-                >
-                  <MessageSquareText aria-hidden="true" />
-                  話したいこと
-                </Button>
-              </div>
-              {!userId && (
-                <p className="quick-entry__hint">
-                  「話したいこと」はGoogleログイン後に利用できます。
-                </p>
-              )}
-            </section>
-          )}
-
-          {/* メモフォームは非表示中も保持して、入力途中の内容を守る */}
-          {userId && (
-            <div
-              className="mb-6"
-              hidden={
-                !showForm ||
-                entryKind !== "memo" ||
-                isLoadingTasks ||
-                Boolean(loadError)
-              }
-            >
-              <TalkMemoForm
-                key={userId}
-                onSubmit={talkMemos.addMemo}
-                onCancel={() => setShowForm(false)}
-                showCloseButton
-                isActive={
-                  showForm &&
-                  entryKind === "memo" &&
-                  !isLoadingTasks &&
-                  !loadError
-                }
-              />
-            </div>
-          )}
-
-          {showForm && entryKind === "task" && !isLoadingTasks && !loadError && (
-            <div className="mb-6">
+          <section
+            ref={entryPanelsRef}
+            className="entry-panels"
+            aria-label="新しい内容を追加"
+          >
+            <div className="entry-panels__panel">
+              {isLoadingTasks ? (
+                <Card>
+                  <CardContent className="entry-panels__status text-muted-foreground">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                    タスクを読み込み中...
+                  </CardContent>
+                </Card>
+              ) : loadError ? (
+                <Card>
+                  <CardContent className="entry-panels__status entry-panels__status--error">
+                    <AlertCircle className="h-5 w-5" />
+                    <p>タスクの読み込みに失敗しました: {loadError}</p>
+                    <Button variant="outline" size="sm" onClick={handleRetry}>
+                      再試行
+                    </Button>
+                  </CardContent>
+                </Card>
+              ) : (
                 <TaskForm
-                  key={editingTask?.id ?? "new-task"}
+                  key={editingTask?.id ?? `new-task-${currentTaskOwnerId ?? "local"}`}
                   onSubmit={editingTask ? handleUpdateTask : handleAddTask}
                   editingTask={editingTask || undefined}
                   onCancel={handleCancelEdit}
-                  showCloseButton={!editingTask}
                 />
+              )}
             </div>
-          )}
 
-          {/* Loading / Error 表示（Tabs の代わりに render） */}
-          {isLoadingTasks && (
-            <Card>
-              <CardContent className="py-12 flex items-center justify-center gap-3 text-muted-foreground">
-                <Loader2 className="h-5 w-5 animate-spin" />
-                読み込み中...
-              </CardContent>
-            </Card>
-          )}
-
-          {!isLoadingTasks && loadError && (
-            <Alert variant="destructive">
-              <AlertCircle className="h-4 w-4" />
-              <AlertDescription className="flex items-center justify-between gap-4">
-                <span>タスクの読み込みに失敗しました: {loadError}</span>
-                <Button variant="outline" size="sm" onClick={handleRetry}>
-                  再試行
-                </Button>
-              </AlertDescription>
-            </Alert>
-          )}
+            <div className="entry-panels__panel">
+              {userId ? (
+                <TalkMemoForm
+                  key={userId}
+                  onSubmit={talkMemos.addMemo}
+                />
+              ) : (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <MessageSquareText className="h-5 w-5" />
+                      話したいことを追加
+                    </CardTitle>
+                    <CardDescription>
+                      相手・内容・重要度だけを、すぐにメモできます
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="entry-panels__login-note">
+                      <MessageSquareText aria-hidden="true" />
+                      <div>
+                        <p>Googleログイン後に利用できます</p>
+                        <span>
+                          画面上部の「Googleで続ける」からログインしてください。
+                        </span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </section>
 
           {/* タブナビゲーション（loading/error でない場合のみ） */}
           {!isLoadingTasks && !loadError && (
           <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-              <TabsList className="grid w-full sm:w-auto grid-cols-3">
-                <TabsTrigger value="list" className="flex items-center gap-2">
+              <TabsList className="app-tabs__list grid w-full sm:w-auto grid-cols-3">
+                <TabsTrigger value="list" className="app-tabs__trigger flex items-center gap-2">
                   <List className="h-4 w-4" />
                   一覧
                 </TabsTrigger>
-                <TabsTrigger value="today" className="flex items-center gap-2">
+                <TabsTrigger value="today" className="app-tabs__trigger flex items-center gap-2">
                   <Calendar className="h-4 w-4" />
                   今日
                 </TabsTrigger>
-                <TabsTrigger value="matrix" className="flex items-center gap-2">
+                <TabsTrigger value="matrix" className="app-tabs__trigger flex items-center gap-2">
                   <Grid3X3 className="h-4 w-4" />
                   マトリクス
                 </TabsTrigger>
