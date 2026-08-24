@@ -9,7 +9,7 @@ const LOCAL_KEY = "tasks";
 export interface TasksRepo {
   list(): Promise<Task[]>;
   create(input: Omit<Task, "id" | "createdAt">): Promise<Task>;
-  update(id: string, patch: Partial<Omit<Task, "id" | "createdAt">>): Promise<void>;
+  update(id: string, patch: Partial<Omit<Task, "id" | "createdAt">>): Promise<Task>;
   remove(id: string): Promise<void>;
   // Re-insert a previously existing task, preserving its id and
   // createdAt so that sort order stays stable after a delete → undo
@@ -63,7 +63,12 @@ export function createLocalRepo(): TasksRepo {
       return newTask;
     },
     async update(id, patch) {
-      saveLocal(loadLocal().map((t) => (t.id === id ? { ...t, ...patch } : t)));
+      const current = loadLocal();
+      const existing = current.find((task) => task.id === id);
+      if (!existing) throw new Error("タスクが見つかりません");
+      const updated = { ...existing, ...patch };
+      saveLocal(current.map((task) => (task.id === id ? updated : task)));
+      return updated;
     },
     async remove(id) {
       saveLocal(loadLocal().filter((t) => t.id !== id));
@@ -108,6 +113,7 @@ export type TaskRow = {
   completed: boolean;
   created_at: string;
   updated_at: string;
+  deleted_at: string | null;
 };
 
 export function fromRow(row: TaskRow): Task {
@@ -163,6 +169,7 @@ export function createSupabaseRepo(userId: string): TasksRepo {
       const { data, error } = await client
         .from("tasks")
         .select("*")
+        .is("deleted_at", null)
         .order("created_at", { ascending: false });
       if (error) throw error;
       return (data ?? []).map(fromRow);
@@ -179,22 +186,30 @@ export function createSupabaseRepo(userId: string): TasksRepo {
     },
 
     async update(id, patch) {
-      const { error } = await client
+      const { data, error } = await client
         .from("tasks")
         .update(toUpdatePayload(patch))
-        .eq("id", id);
+        .eq("id", id)
+        .is("deleted_at", null)
+        .select()
+        .single();
       if (error) throw error;
+      return fromRow(data);
     },
 
     async remove(id) {
-      const { error } = await client.from("tasks").delete().eq("id", id);
+      const { error } = await client
+        .from("tasks")
+        .update({ deleted_at: new Date().toISOString() })
+        .eq("id", id)
+        .is("deleted_at", null);
       if (error) throw error;
     },
 
     async restore(task) {
       const { data, error } = await client
         .from("tasks")
-        .insert({
+        .upsert({
           id: task.id,
           user_id: userId,
           title: task.title,
@@ -205,7 +220,8 @@ export function createSupabaseRepo(userId: string): TasksRepo {
           is_today: task.isToday,
           completed: task.completed,
           created_at: task.createdAt.toISOString(),
-        })
+          deleted_at: null,
+        }, { onConflict: "id" })
         .select()
         .single();
       if (error) throw error;
@@ -237,10 +253,15 @@ export function createSupabaseRepo(userId: string): TasksRepo {
         is_today: t.isToday,
         completed: t.completed,
         created_at: t.createdAt.toISOString(),
+        deleted_at: null,
       }));
-      const { data, error } = await client.from("tasks").insert(payloads).select();
+      const { data, error } = await client
+        .from("tasks")
+        .upsert(payloads, { onConflict: "id" })
+        .select();
       if (error) throw error;
       return (data ?? []).map(fromRow);
     },
   };
 }
+

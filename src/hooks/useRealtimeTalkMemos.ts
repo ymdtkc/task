@@ -13,13 +13,18 @@ export function useRealtimeTalkMemos(
   setMemos: Dispatch<SetStateAction<TalkMemo[]>>,
   remotelyDeletedIds: MutableRefObject<Set<string>>,
   activeUserId: MutableRefObject<string | null>,
+  onSubscribed: (subscribedUserId: string) => void,
+  onConnectionError: (subscribedUserId: string) => void,
+  retryKey: number,
 ) {
   useEffect(() => {
     if (!userId || !supabase) return;
     const client = supabase;
+    let disposed = false;
+    let connectionErrorReported = false;
 
     const applyRow = (row: TalkMemoRow) => {
-      if (activeUserId.current !== userId) return;
+      if (disposed || activeUserId.current !== userId) return;
 
       if (row.deleted_at) {
         remotelyDeletedIds.current.add(row.id);
@@ -36,7 +41,7 @@ export function useRealtimeTalkMemos(
     };
 
     const channel = client
-      .channel(`talk-memos-${userId}`)
+      .channel(`talk-memos-${userId}-${retryKey}`)
       .on(
         "postgres_changes",
         {
@@ -58,16 +63,41 @@ export function useRealtimeTalkMemos(
         (payload) => applyRow(payload.new as TalkMemoRow),
       )
       .subscribe((status) => {
-        if (status === "CHANNEL_ERROR" || status === "TIMED_OUT") {
+        if (disposed || activeUserId.current !== userId) return;
+
+        if (status === "SUBSCRIBED") {
+          connectionErrorReported = false;
+          onSubscribed(userId);
+          return;
+        }
+
+        if (
+          !connectionErrorReported &&
+          (status === "CHANNEL_ERROR" ||
+            status === "TIMED_OUT" ||
+            status === "CLOSED")
+        ) {
+          connectionErrorReported = true;
+          onConnectionError(userId);
           toast.error(
-            "話したいことの自動同期に接続できませんでした。画面を再読み込みしてください。",
+            "自動同期に接続できません。別の端末での変更を見るには、画面を再読み込みしてください。",
             { id: "talk-memos-realtime-error" },
           );
         }
       });
 
     return () => {
+      disposed = true;
       client.removeChannel(channel);
     };
-  }, [activeUserId, remotelyDeletedIds, setMemos, userId]);
+  }, [
+    activeUserId,
+    onConnectionError,
+    onSubscribed,
+    remotelyDeletedIds,
+    retryKey,
+    setMemos,
+    userId,
+  ]);
 }
+

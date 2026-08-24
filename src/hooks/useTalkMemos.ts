@@ -16,39 +16,97 @@ export function useTalkMemos(userId: string | null) {
     [userId],
   );
   const [memos, setMemos] = useState<TalkMemo[]>([]);
+  const [memosOwnerId, setMemosOwnerId] = useState<string | null>(userId);
   const memosRef = useRef<TalkMemo[]>([]);
   const remotelyDeletedIds = useRef<Set<string>>(new Set());
   const activeUserId = useRef<string | null>(userId);
   activeUserId.current = userId;
+  const syncGeneration = useRef(0);
+  const [syncRequest, setSyncRequest] = useState<{
+    userId: string;
+    generation: number;
+  } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
 
-  useEffect(() => {
-    memosRef.current = memos;
-  }, [memos]);
+  const isCurrentOwner = memosOwnerId === userId;
+  const visibleMemos = isCurrentOwner ? memos : [];
 
   useEffect(() => {
+    memosRef.current = visibleMemos;
+  }, [visibleMemos]);
+
+  useEffect(() => {
+    syncGeneration.current += 1;
     remotelyDeletedIds.current = new Set();
+    memosRef.current = [];
+    setMemos([]);
+    setMemosOwnerId(userId);
+    setSyncRequest(null);
+    setError(null);
+    setIsLoading(Boolean(userId));
   }, [userId]);
 
-  useEffect(() => {
-    let cancelled = false;
+  const handleSubscribed = useCallback((subscribedUserId: string) => {
+    if (activeUserId.current !== subscribedUserId) return;
+    const generation = syncGeneration.current + 1;
+    syncGeneration.current = generation;
+    remotelyDeletedIds.current = new Set();
+    memosRef.current = [];
     setMemos([]);
+    setMemosOwnerId(subscribedUserId);
     setError(null);
+    setIsLoading(true);
+    setSyncRequest({ userId: subscribedUserId, generation });
+  }, []);
 
-    if (!repo) {
-      setIsLoading(false);
-      return () => {
-        cancelled = true;
-      };
+  const handleConnectionError = useCallback((subscribedUserId: string) => {
+    if (activeUserId.current !== subscribedUserId) return;
+    const generation = syncGeneration.current + 1;
+    syncGeneration.current = generation;
+    memosRef.current = [];
+    setMemos([]);
+    setMemosOwnerId(subscribedUserId);
+    setError(null);
+    setIsLoading(true);
+    // Even when the live connection is unavailable, load the current
+    // database snapshot so the feature remains usable. The realtime hook
+    // separately tells the user to refresh to see other-device changes.
+    setSyncRequest({ userId: subscribedUserId, generation });
+  }, []);
+
+  useRealtimeTalkMemos(
+    userId,
+    setMemos,
+    remotelyDeletedIds,
+    activeUserId,
+    handleSubscribed,
+    handleConnectionError,
+    retryKey,
+  );
+
+  useEffect(() => {
+    if (
+      !repo ||
+      !userId ||
+      !syncRequest ||
+      syncRequest.userId !== userId
+    ) {
+      return;
     }
 
-    setIsLoading(true);
-    repo
+    let cancelled = false;
+    const { generation } = syncRequest;
+
+    void repo
       .list()
       .then((loaded) => {
-        if (!cancelled && activeUserId.current === userId) {
+        if (
+          !cancelled &&
+          activeUserId.current === userId &&
+          syncGeneration.current === generation
+        ) {
           setMemos((current) => {
             const merged = new Map<string, TalkMemo>();
             for (const memo of loaded) {
@@ -66,12 +124,20 @@ export function useTalkMemos(userId: string | null) {
         }
       })
       .catch((cause) => {
-        if (!cancelled && activeUserId.current === userId) {
+        if (
+          !cancelled &&
+          activeUserId.current === userId &&
+          syncGeneration.current === generation
+        ) {
           setError(errorMessage(cause));
         }
       })
       .finally(() => {
-        if (!cancelled && activeUserId.current === userId) {
+        if (
+          !cancelled &&
+          activeUserId.current === userId &&
+          syncGeneration.current === generation
+        ) {
           setIsLoading(false);
         }
       });
@@ -79,16 +145,19 @@ export function useTalkMemos(userId: string | null) {
     return () => {
       cancelled = true;
     };
-  }, [repo, retryKey, userId]);
+  }, [repo, syncRequest, userId]);
 
-  useRealtimeTalkMemos(
-    userId,
-    setMemos,
-    remotelyDeletedIds,
-    activeUserId,
-  );
-
-  const retry = useCallback(() => setRetryKey((value) => value + 1), []);
+  const retry = useCallback(() => {
+    syncGeneration.current += 1;
+    remotelyDeletedIds.current = new Set();
+    memosRef.current = [];
+    setMemos([]);
+    setMemosOwnerId(userId);
+    setSyncRequest(null);
+    setError(null);
+    setIsLoading(Boolean(userId));
+    setRetryKey((value) => value + 1);
+  }, [userId]);
 
   const addMemo = useCallback(
     async (input: NewTalkMemo) => {
@@ -104,25 +173,24 @@ export function useTalkMemos(userId: string | null) {
       setMemos((current) => [temporary, ...current]);
 
       try {
-        const created = await repo.create(input);
+        await repo.create(input);
         if (activeUserId.current !== operationUserId) return;
-        setMemos((current) => [
-          created,
-          ...current.filter(
-            (memo) => memo.id !== tempId && memo.id !== created.id,
-          ),
-        ]);
+        setMemos((current) =>
+          current.filter((memo) => memo.id !== tempId),
+        );
         toast.success("話したいことを追加しました");
+        retry();
       } catch (cause) {
         if (activeUserId.current !== operationUserId) return;
         setMemos((current) =>
           current.filter((memo) => memo.id !== tempId),
         );
         toast.error(`追加に失敗しました: ${errorMessage(cause)}`);
+        retry();
         throw cause;
       }
     },
-    [repo, userId],
+    [repo, retry, userId],
   );
 
   const deleteMemo = useCallback(
@@ -141,18 +209,19 @@ export function useTalkMemos(userId: string | null) {
         await repo.remove(id);
       } catch (cause) {
         if (activeUserId.current !== operationUserId) return;
-        remotelyDeletedIds.current.delete(id);
-        setMemos((current) => {
-          if (current.some((memo) => memo.id === deleted.id)) return current;
-          const restored = [...current];
-          restored.splice(Math.min(index, restored.length), 0, deleted);
-          return restored;
-        });
-        toast.error(`削除に失敗しました: ${errorMessage(cause)}`);
+        toast.error(
+          `削除結果を確認できませんでした。最新の状態を読み直します: ${errorMessage(cause)}`,
+        );
+        retry();
         return;
       }
 
       if (activeUserId.current !== operationUserId) return;
+      // A connection fallback may have replaced the optimistic state with
+      // a snapshot taken just before this delete committed. Re-assert the
+      // confirmed delete so that stale snapshot cannot bring the row back.
+      remotelyDeletedIds.current.add(id);
+      setMemos((current) => current.filter((memo) => memo.id !== id));
       toast.success("話し終えたメモを削除しました", {
         duration: UNDO_WINDOW_MS,
         action: {
@@ -163,38 +232,30 @@ export function useTalkMemos(userId: string | null) {
               return;
             }
             try {
-              const restoredMemo = await repo.restore(deleted);
+              await repo.restore(deleted);
               if (activeUserId.current !== operationUserId) return;
-              remotelyDeletedIds.current.delete(restoredMemo.id);
-              setMemos((current) => {
-                if (current.some((memo) => memo.id === restoredMemo.id)) {
-                  return current;
-                }
-                const restored = [...current];
-                restored.splice(
-                  Math.min(index, restored.length),
-                  0,
-                  restoredMemo,
-                );
-                return restored;
-              });
               toast.success("メモを元に戻しました");
+              retry();
             } catch (cause) {
+              if (activeUserId.current !== operationUserId) return;
               toast.error(`元に戻せませんでした: ${errorMessage(cause)}`);
+              retry();
             }
           },
         },
       });
+      retry();
     },
-    [repo, userId],
+    [repo, retry, userId],
   );
 
   return {
-    memos,
-    isLoading,
-    error,
+    memos: visibleMemos,
+    isLoading: isCurrentOwner ? isLoading : Boolean(userId),
+    error: isCurrentOwner ? error : null,
     retry,
     addMemo,
     deleteMemo,
   };
 }
+

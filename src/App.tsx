@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import { DndProvider } from 'react-dnd';
 import { HTML5Backend } from 'react-dnd-html5-backend';
 import { TaskForm, Task } from "./components/TaskForm";
@@ -41,13 +41,41 @@ export default function App() {
   const auth = useAuth();
   const { session } = auth;
   const userId = session?.user?.id;
+  const currentTaskOwnerId = userId ?? null;
 
   const repo: TasksRepo = useMemo(() => {
     if (userId) return createSupabaseRepo(userId);
     return createLocalRepo();
   }, [userId]);
 
-  const [tasks, setTasks] = useState<Task[]>([]);
+  const activeTaskOwnerId = useRef<string | null>(currentTaskOwnerId);
+  activeTaskOwnerId.current = currentTaskOwnerId;
+  const previousTaskOwnerId = useRef<string | null>(currentTaskOwnerId);
+  const [taskState, setTaskState] = useState<{
+    ownerId: string | null;
+    items: Task[];
+  }>({ ownerId: currentTaskOwnerId, items: [] });
+  const tasks =
+    taskState.ownerId === currentTaskOwnerId ? taskState.items : [];
+  const updateTasksForOwner = useCallback(
+    (
+      ownerId: string | null,
+      updater: Task[] | ((current: Task[]) => Task[]),
+    ) => {
+      setTaskState((current) => {
+        if (
+          activeTaskOwnerId.current !== ownerId ||
+          current.ownerId !== ownerId
+        ) {
+          return current;
+        }
+        const items =
+          typeof updater === "function" ? updater(current.items) : updater;
+        return { ownerId, items };
+      });
+    },
+    [],
+  );
   const [isLoadingTasks, setIsLoadingTasks] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
@@ -60,50 +88,99 @@ export default function App() {
   const [pendingImport, setPendingImport] = useState<Task[] | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Load tasks whenever the repo changes (session change = user switch or
-  // logout), or when the user explicitly retries via handleRetry.
-  // Clearing first prevents a brief flash of the previous user's tasks
-  // while the new list is in flight.
+  // Sonner keeps active notifications outside React. Clear them before the
+  // next account's UI is mounted so a task title or undo action from the
+  // previous account cannot carry over.
+  useEffect(() => {
+    if (previousTaskOwnerId.current !== currentTaskOwnerId) {
+      toast.dismiss();
+      previousTaskOwnerId.current = currentTaskOwnerId;
+    }
+  }, [currentTaskOwnerId]);
+
+  const {
+    snapshotRequest: taskSnapshotRequest,
+    mergeSnapshot: mergeTaskSnapshot,
+    markDeleted: markTaskDeleted,
+    markRestored: markTaskRestored,
+    confirmDeleted: confirmTaskDeleted,
+  } = useRealtimeTasks(userId ?? null, updateTasksForOwner, retryKey);
+  const talkMemos = useTalkMemos(userId ?? null);
+
+  // Signed-in data is loaded only after Realtime is ready, then merged with
+  // events that arrived during the request. Local, signed-out data can be
+  // read immediately because it has no cross-device subscription.
   useEffect(() => {
     if (auth.isLoading) return;
 
-    let cancelled = false;
+    const loadingOwnerId = currentTaskOwnerId;
+    const validRemoteRequest =
+      userId &&
+      taskSnapshotRequest?.ownerId === userId &&
+      taskSnapshotRequest.retryKey === retryKey
+        ? taskSnapshotRequest
+        : null;
+
     setIsLoadingTasks(true);
     setLoadError(null);
-    setTasks([]);
+    setTaskState({ ownerId: loadingOwnerId, items: [] });
+    setEditingTask(null);
+    setPendingImport(null);
+
+    if (userId && !validRemoteRequest) return;
+
+    let cancelled = false;
     repo
       .list()
       .then((loaded) => {
-        if (!cancelled) setTasks(loaded);
+        if (!cancelled && activeTaskOwnerId.current === loadingOwnerId) {
+          if (validRemoteRequest) {
+            mergeTaskSnapshot(validRemoteRequest, loaded);
+          } else {
+            updateTasksForOwner(loadingOwnerId, loaded);
+          }
+        }
       })
       .catch((e) => {
-        if (!cancelled) {
+        if (!cancelled && activeTaskOwnerId.current === loadingOwnerId) {
           console.error("[tasks] list failed:", e);
           setLoadError(errMsg(e));
         }
       })
       .finally(() => {
-        if (!cancelled) setIsLoadingTasks(false);
+        if (!cancelled && activeTaskOwnerId.current === loadingOwnerId) {
+          setIsLoadingTasks(false);
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [auth.isLoading, repo, retryKey]);
+  }, [
+    auth.isLoading,
+    currentTaskOwnerId,
+    mergeTaskSnapshot,
+    repo,
+    retryKey,
+    taskSnapshotRequest,
+    updateTasksForOwner,
+    userId,
+  ]);
 
   const handleRetry = () => setRetryKey((k) => k + 1);
 
-  useRealtimeTasks(userId ?? null, setTasks);
-  const talkMemos = useTalkMemos(userId ?? null);
-
   const handleMigrate = async (localTasks: Task[]) => {
+    const operationOwnerId = currentTaskOwnerId;
     try {
       const restored = await repo.bulkRestore(localTasks);
+      if (activeTaskOwnerId.current !== operationOwnerId) return;
       localStorage.removeItem("tasks");
       if (userId) localStorage.removeItem(`migrationSkipped_${userId}`);
-      setTasks(restored);
-      toast.success(`${restored.length}件のタスクを移行しました`);
+      toast.success(`${restored.length}件のタスクを引き継ぎました`);
+      setRetryKey((key) => key + 1);
     } catch (e) {
-      toast.error(`移行に失敗しました: ${errMsg(e)}`);
+      if (activeTaskOwnerId.current !== operationOwnerId) return;
+      toast.error(`引き継ぎに失敗しました: ${errMsg(e)}`);
+      setRetryKey((key) => key + 1);
       throw e;
     }
   };
@@ -119,6 +196,7 @@ export default function App() {
   }, [activeTab]);
 
   const handleAddTask = async (taskData: Omit<Task, 'id' | 'createdAt'>) => {
+    const operationOwnerId = currentTaskOwnerId;
     // Optimistic: render a temporary task while the backend round-trips,
     // then swap it for the real one (real id, real createdAt) when the
     // write completes. On failure, remove the temp.
@@ -128,7 +206,7 @@ export default function App() {
       id: tempId,
       createdAt: new Date(),
     };
-    setTasks(prev => [tempTask, ...prev]);
+    updateTasksForOwner(operationOwnerId, prev => [tempTask, ...prev]);
     if (activeTab !== "list") {
       setShowForm(false);
     } else {
@@ -136,19 +214,28 @@ export default function App() {
     }
 
     try {
-      const created = await repo.create(taskData);
-      setTasks(prev => prev.map(t => t.id === tempId ? created : t));
+      await repo.create(taskData);
+      if (activeTaskOwnerId.current !== operationOwnerId) return;
+      updateTasksForOwner(operationOwnerId, prev =>
+        prev.filter(t => t.id !== tempId)
+      );
       toast.success("タスクを追加しました");
+      setRetryKey((key) => key + 1);
     } catch (e) {
-      setTasks(prev => prev.filter(t => t.id !== tempId));
+      if (activeTaskOwnerId.current !== operationOwnerId) return;
+      updateTasksForOwner(operationOwnerId, prev =>
+        prev.filter(t => t.id !== tempId)
+      );
       toast.error(`追加に失敗しました: ${errMsg(e)}`);
+      setRetryKey((key) => key + 1);
     }
   };
 
   const handleUpdateTask = async (taskData: Omit<Task, 'id' | 'createdAt'>) => {
     if (!editingTask) return;
+    const operationOwnerId = currentTaskOwnerId;
     const prevTask = editingTask;
-    setTasks(prev => prev.map(t =>
+    updateTasksForOwner(operationOwnerId, prev => prev.map(t =>
       t.id === prevTask.id
         ? { ...taskData, id: prevTask.id, createdAt: prevTask.createdAt }
         : t
@@ -157,40 +244,55 @@ export default function App() {
 
     try {
       await repo.update(prevTask.id, taskData);
+      if (activeTaskOwnerId.current !== operationOwnerId) return;
       toast.success("タスクを更新しました");
+      setRetryKey((key) => key + 1);
     } catch (e) {
-      setTasks(prev => prev.map(t => t.id === prevTask.id ? prevTask : t));
+      if (activeTaskOwnerId.current !== operationOwnerId) return;
       toast.error(`更新に失敗しました: ${errMsg(e)}`);
+      setRetryKey((key) => key + 1);
     }
   };
 
   const handleToggleComplete = async (id: string) => {
+    const operationOwnerId = currentTaskOwnerId;
     const task = tasks.find(t => t.id === id);
     if (!task) return;
     const newCompleted = !task.completed;
-    setTasks(prev => prev.map(t => t.id === id ? { ...t, completed: newCompleted } : t));
+    updateTasksForOwner(operationOwnerId, prev =>
+      prev.map(t => t.id === id ? { ...t, completed: newCompleted } : t)
+    );
 
     try {
       await repo.update(id, { completed: newCompleted });
+      if (activeTaskOwnerId.current !== operationOwnerId) return;
       toast.success(newCompleted ? "タスクを完了しました" : "タスクを未完了にしました");
+      setRetryKey((key) => key + 1);
     } catch (e) {
-      setTasks(prev => prev.map(t => t.id === id ? { ...t, completed: !newCompleted } : t));
+      if (activeTaskOwnerId.current !== operationOwnerId) return;
       toast.error(`更新に失敗しました: ${errMsg(e)}`);
+      setRetryKey((key) => key + 1);
     }
   };
 
   const handleToggleToday = async (id: string) => {
+    const operationOwnerId = currentTaskOwnerId;
     const task = tasks.find(t => t.id === id);
     if (!task) return;
     const newIsToday = !task.isToday;
-    setTasks(prev => prev.map(t => t.id === id ? { ...t, isToday: newIsToday } : t));
+    updateTasksForOwner(operationOwnerId, prev =>
+      prev.map(t => t.id === id ? { ...t, isToday: newIsToday } : t)
+    );
 
     try {
       await repo.update(id, { isToday: newIsToday });
+      if (activeTaskOwnerId.current !== operationOwnerId) return;
       toast.success(newIsToday ? "今日のタスクに追加しました" : "今日のタスクから削除しました");
+      setRetryKey((key) => key + 1);
     } catch (e) {
-      setTasks(prev => prev.map(t => t.id === id ? { ...t, isToday: !newIsToday } : t));
+      if (activeTaskOwnerId.current !== operationOwnerId) return;
       toast.error(`更新に失敗しました: ${errMsg(e)}`);
+      setRetryKey((key) => key + 1);
     }
   };
 
@@ -200,40 +302,51 @@ export default function App() {
   };
 
   const handleDeleteTask = async (id: string) => {
+    const operationOwnerId = currentTaskOwnerId;
     const index = tasks.findIndex(t => t.id === id);
     if (index === -1) return;
     const deleted = tasks[index];
 
     // Optimistic remove first so the UI reacts immediately.
-    setTasks(prev => prev.filter(t => t.id !== id));
+    markTaskDeleted(operationOwnerId, id);
 
     try {
       await repo.remove(id);
     } catch (e) {
-      // Restore in place and let the user try again.
-      setTasks(prev => [...prev.slice(0, index), deleted, ...prev.slice(index)]);
-      toast.error(`削除に失敗しました: ${errMsg(e)}`);
+      if (activeTaskOwnerId.current !== operationOwnerId) return;
+      markTaskRestored(operationOwnerId, id);
+      toast.error(`削除結果を確認できませんでした: ${errMsg(e)}`);
+      setRetryKey((key) => key + 1);
       return;
     }
 
+    if (activeTaskOwnerId.current !== operationOwnerId) return;
+    confirmTaskDeleted(operationOwnerId, id);
     toast.success("タスクを削除しました", {
       duration: UNDO_WINDOW_MS,
       action: {
         label: "元に戻す",
         onClick: async () => {
-          // Re-insert preserving id + createdAt via repo.restore, so
-          // sort order is stable and realtime peers see a clean
-          // DELETE-then-INSERT sequence.
+          if (activeTaskOwnerId.current !== operationOwnerId) {
+            toast.error("アカウントが切り替わったため、元に戻せません。");
+            return;
+          }
+          // Restore the soft-deleted row while preserving id + createdAt.
           try {
-            const restored = await repo.restore(deleted);
-            setTasks(prev => [...prev.slice(0, index), restored, ...prev.slice(index)]);
+            await repo.restore(deleted);
+            if (activeTaskOwnerId.current !== operationOwnerId) return;
+            markTaskRestored(operationOwnerId, deleted.id);
             toast.success("タスクを復元しました", { duration: RESTORE_TOAST_MS });
+            setRetryKey((key) => key + 1);
           } catch (e) {
+            if (activeTaskOwnerId.current !== operationOwnerId) return;
             toast.error(`復元に失敗しました: ${errMsg(e)}`);
+            setRetryKey((key) => key + 1);
           }
         },
       },
     });
+    setRetryKey((key) => key + 1);
   };
 
   const handleCancelEdit = () => {
@@ -253,12 +366,14 @@ export default function App() {
   };
 
   const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const operationOwnerId = currentTaskOwnerId;
     const file = e.target.files?.[0];
     // リセット：同じファイルを再選択できるように
     e.target.value = "";
     if (!file) return;
 
     const text = await file.text();
+    if (activeTaskOwnerId.current !== operationOwnerId) return;
     const result = parseImport(text);
     if (!result.ok) {
       toast.error(`インポートに失敗しました: ${result.error}`);
@@ -273,6 +388,7 @@ export default function App() {
 
   const handleConfirmImport = async (mode: "overwrite" | "append") => {
     if (!pendingImport) return;
+    const operationOwnerId = currentTaskOwnerId;
     const count = pendingImport.length;
     // Strip id/createdAt from incoming so repo.bulkCreate mints fresh
     // ones per row. Simpler than carrying JSON-supplied ids across
@@ -292,44 +408,54 @@ export default function App() {
 
     try {
       if (mode === "overwrite") {
+        // Create the imported set first. If an account switch or network
+        // failure interrupts the operation, this can leave duplicates but
+        // never deletes the original set before a replacement exists.
+        await repo.bulkCreate(incoming);
+        if (activeTaskOwnerId.current !== operationOwnerId) return;
+        snapshot.forEach(task => markTaskDeleted(operationOwnerId, task.id));
         await Promise.all(snapshot.map(t => repo.remove(t.id)));
-        const created = await repo.bulkCreate(incoming);
-        setTasks(created);
+        if (activeTaskOwnerId.current !== operationOwnerId) return;
+        snapshot.forEach(task => confirmTaskDeleted(operationOwnerId, task.id));
         toast.success(`${count}件のタスクで上書きしました`);
+        setRetryKey((key) => key + 1);
       } else {
-        const created = await repo.bulkCreate(incoming);
-        setTasks(prev => [...created, ...prev]);
+        await repo.bulkCreate(incoming);
+        if (activeTaskOwnerId.current !== operationOwnerId) return;
         toast.success(`${count}件のタスクを追加しました`);
+        setRetryKey((key) => key + 1);
       }
     } catch (e) {
+      if (activeTaskOwnerId.current !== operationOwnerId) return;
       toast.error(`インポートに失敗しました: ${errMsg(e)}`);
-      // Reconcile against source of truth so the screen reflects what
-      // actually persisted.
-      repo.list().then(setTasks).catch(() => {});
+      setRetryKey((key) => key + 1);
     }
   };
 
   const handleMoveTask = async (taskId: string, newImportance: number, newUrgency: number) => {
+    const operationOwnerId = currentTaskOwnerId;
     const task = tasks.find(t => t.id === taskId);
     if (!task) return;
-    const oldImportance = task.importance;
-    const oldUrgency = task.urgency;
-    setTasks(prev => prev.map(t =>
+    updateTasksForOwner(operationOwnerId, prev => prev.map(t =>
       t.id === taskId ? { ...t, importance: newImportance, urgency: newUrgency } : t
     ));
 
     try {
-      await repo.update(taskId, { importance: newImportance, urgency: newUrgency });
+      await repo.update(taskId, {
+        importance: newImportance,
+        urgency: newUrgency,
+      });
+      if (activeTaskOwnerId.current !== operationOwnerId) return;
       const importanceLabels = { 1: "低", 2: "中", 3: "高" };
       const urgencyLabels = { 1: "低", 2: "中", 3: "高" };
       toast.success(
-        `${task.title} を移動しました\n重要度: ${importanceLabels[newImportance as keyof typeof importanceLabels]}, 緊急度: ${urgencyLabels[newUrgency as keyof typeof urgencyLabels]}`
+        `タスクを移動しました\n重要度: ${importanceLabels[newImportance as keyof typeof importanceLabels]}, 緊急度: ${urgencyLabels[newUrgency as keyof typeof urgencyLabels]}`
       );
+      setRetryKey((key) => key + 1);
     } catch (e) {
-      setTasks(prev => prev.map(t =>
-        t.id === taskId ? { ...t, importance: oldImportance, urgency: oldUrgency } : t
-      ));
+      if (activeTaskOwnerId.current !== operationOwnerId) return;
       toast.error(`移動に失敗しました: ${errMsg(e)}`);
+      setRetryKey((key) => key + 1);
     }
   };
 
@@ -342,6 +468,17 @@ export default function App() {
         <div className="flex items-center gap-2 text-muted-foreground" role="status">
           <Loader2 className="h-5 w-5 animate-spin" />
           ログイン状態を確認中...
+        </div>
+      </div>
+    );
+  }
+
+  if (taskState.ownerId !== currentTaskOwnerId) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <div className="flex items-center gap-2 text-muted-foreground" role="status">
+          <Loader2 className="h-5 w-5 animate-spin" />
+          アカウントのデータを切り替え中...
         </div>
       </div>
     );
@@ -420,8 +557,9 @@ export default function App() {
             <Alert className="mt-4">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>
-                現在は未ログインです。タスクはこの端末だけに保存されます。
-                どの端末でも同じ内容を見るには、右上の「ログイン」をご利用ください。
+                現在は未ログインです。このまま作成したタスクは、この端末だけに保存されます。
+                「Googleで続ける」からログインすると、パソコンやスマートフォンでも同じ内容を確認できます。
+                初めての方もGoogleアカウントを選ぶだけで始められます。
               </AlertDescription>
             </Alert>
           )}
@@ -429,7 +567,7 @@ export default function App() {
 
         <div className="space-y-6">
           {/* タスク追加フォーム */}
-          {showForm && (
+          {showForm && !isLoadingTasks && !loadError && (
             <div className="mb-6">
               <TaskForm
                 onSubmit={editingTask ? handleUpdateTask : handleAddTask}
@@ -519,6 +657,7 @@ export default function App() {
                 onMoveTask={handleMoveTask}
               />
               <TalkMemosSection
+                key={currentTaskOwnerId ?? "signed-out"}
                 isSignedIn={Boolean(userId)}
                 memos={talkMemos.memos}
                 isLoading={talkMemos.isLoading}
@@ -579,3 +718,4 @@ export default function App() {
     </DndProvider>
   );
 }
+

@@ -151,7 +151,7 @@ export function TalkMemosSection({
           <div>
             <p className="talk-memos__notice-title">ログインすると利用できます</p>
             <p className="talk-memos__notice-text">
-              同じアカウントでログインすれば、どの端末でも同じ内容を確認できます。
+              同じGoogleアカウントでログインすれば、どの端末でも同じ内容を確認できます。
             </p>
           </div>
         </div>

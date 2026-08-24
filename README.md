@@ -8,8 +8,7 @@
 - 今日のタスク
 - 重要度×緊急度のマトリクスとドラッグ移動
 - JSON形式のバックアップと復元
-- Googleログイン
-- メールアドレスとパスワードによるログイン
+- Googleアカウントによる開始・ログイン
 - ログイン中の端末間データ同期
 - 「誰に」「話したいこと」「重要度」の3項目で残せる会話メモ
 
@@ -23,7 +22,9 @@
 1. Supabaseの「SQL Editor」で、次のSQLを番号順に実行します。
    - supabase/migrations/001_create_tasks_table.sql
    - supabase/migrations/002_add_talk_memos.sql
-2. 「Authentication」→「Providers」で、EmailとGoogleを有効にします。
+   - supabase/migrations/003_soft_delete_tasks.sql
+2. 「Authentication」→「Providers」でGoogleだけを有効にし、Emailなどほかの認証方式とAnonymous sign-insを無効にします。初めての人も利用できるよう、`Allow new users to sign up` は有効のままにします。
+   - 新しいSupabaseプロジェクトでは、Google Client ID・Client SecretとSupabaseのcallback URLの設定も必要です。[Supabase公式手順](https://supabase.com/docs/guides/auth/social-login/auth-google)
 3. 「Authentication」→「URL Configuration」で次を設定します。
    - Site URL: https://www.endlesstask.com
    - Redirect URLs: https://www.endlesstask.com/**
@@ -31,17 +32,17 @@
    - VITE_SUPABASE_URL
    - VITE_SUPABASE_ANON_KEY
 
-## 既存のGoogleアカウントへパスワードを追加する
+## 初めて利用する方
 
-既存タスクを引き継ぐため、別アカウントは作成しません。
+専用のサインアップ画面はありません。
 
-1. これまでどおりGoogleでログインします。
-2. 画面右上の「パスワード設定・変更」を押します。
-3. パスワードを設定します。
-4. 次回から、同じメールアドレスと設定したパスワードでもログインできます。
+1. 「Googleで続ける」を押します。
+2. 利用するGoogleアカウントを選びます。
+3. 初回は利用者登録が自動で行われ、そのまま利用を開始できます。
 
-パスワードを忘れた場合はGoogleでログインし、同じ画面から再設定できます。
+タスクと会話メモはGoogleアカウントごとに分かれ、ほかの利用者からは見えません。
 
 ## 公開用ビルド
 
 npm run build
+
