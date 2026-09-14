@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertCircle,
-  GripVertical,
   Loader2,
   MessageSquareText,
   Trash2,
@@ -44,14 +43,18 @@ interface TalkMemoCardProps {
 
 function TalkMemoCard({ memo, isMoving, onOpen }: TalkMemoCardProps) {
   const cannotMove = isMoving || memo.id.startsWith("temp-");
-  const [{ isDragging }, drag, preview] = useDrag<
+  const suppressClick = useRef(false);
+  const [{ isDragging }, drag] = useDrag<
     TalkMemoDragItem,
     unknown,
     { isDragging: boolean }
   >(
     () => ({
       type: TALK_MEMO_DRAG_TYPE,
-      item: { id: memo.id, importance: memo.importance },
+      item: () => {
+        suppressClick.current = true;
+        return { id: memo.id, importance: memo.importance };
+      },
       canDrag: !cannotMove,
       collect: (monitor) => ({ isDragging: monitor.isDragging() }),
     }),
@@ -60,17 +63,29 @@ function TalkMemoCard({ memo, isMoving, onOpen }: TalkMemoCardProps) {
 
   return (
     <div
-      ref={(node) => {
-        preview(node);
-      }}
       className="talk-memos__card"
       data-dragging={isDragging}
+      data-movable={!cannotMove}
       aria-busy={isMoving}
     >
       <button
+        ref={(node) => {
+          drag(node);
+        }}
         type="button"
         className="talk-memos__item"
-        onClick={() => onOpen(memo.id)}
+        onPointerDown={() => {
+          suppressClick.current = false;
+        }}
+        onClick={(event) => {
+          // A drag must not also open details. A new press or keyboard
+          // activation can still open the memo after a cancelled drag.
+          if (event.detail > 0 && suppressClick.current) {
+            event.preventDefault();
+            return;
+          }
+          onOpen(memo.id);
+        }}
         aria-label={`${memo.recipient}宛てのメモを開く`}
       >
         <span className="talk-memos__recipient">
@@ -79,17 +94,11 @@ function TalkMemoCard({ memo, isMoving, onOpen }: TalkMemoCardProps) {
         </span>
         <span className="talk-memos__preview">{memo.content}</span>
       </button>
-      <span
-        ref={(node) => {
-          drag(node);
-        }}
-        className="talk-memos__drag-handle"
-        data-disabled={cannotMove}
-        aria-hidden="true"
-        title={isMoving ? "保存中..." : "ここをドラッグして重要度を変更"}
-      >
-        {isMoving ? <Loader2 className="talk-memos__spinner" /> : <GripVertical />}
-      </span>
+      {isMoving && (
+        <span className="talk-memos__card-saving" role="status" aria-label="保存中">
+          <Loader2 className="talk-memos__spinner" aria-hidden="true" />
+        </span>
+      )}
     </div>
   );
 }
@@ -245,7 +254,7 @@ export function TalkMemosSection({
             </p>
             {isSignedIn && memos.length > 0 && (
               <p className="talk-memos__hint">
-                パソコンでは右上の点をドラッグして重要度を変更。スマホではメモを開いて変更できます。
+                パソコンではメモ全体をドラッグして重要度を変更。クリックすると詳細が開きます。スマホではメモを開いて変更できます。
               </p>
             )}
           </div>

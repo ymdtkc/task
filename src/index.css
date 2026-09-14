@@ -5275,7 +5275,7 @@ html {
   opacity: .45;
 }
 
-.talk-memos__drag-handle {
+.talk-memos__card-saving {
   position: absolute;
   top: .35rem;
   right: .35rem;
@@ -5284,27 +5284,24 @@ html {
   justify-content: center;
   width: 2rem;
   height: 2rem;
-  border-radius: .4rem;
   color: var(--muted-foreground);
+  pointer-events: none;
+}
+
+.talk-memos__card[data-movable="true"] .talk-memos__item {
   cursor: grab;
   user-select: none;
 }
 
-.talk-memos__drag-handle:hover {
-  color: var(--foreground);
-  background: var(--accent);
-}
-
-.talk-memos__drag-handle:active {
+.talk-memos__card[data-movable="true"] .talk-memos__item:active {
   cursor: grabbing;
 }
 
-.talk-memos__drag-handle[data-disabled="true"] {
-  cursor: default;
-  opacity: .6;
+.talk-memos__card[aria-busy="true"] .talk-memos__item {
+  padding-right: 2.7rem;
 }
 
-.talk-memos__drag-handle svg {
+.talk-memos__card-saving svg {
   width: 1.1rem;
   height: 1.1rem;
 }
@@ -5313,7 +5310,7 @@ html {
   display: block;
   width: 100%;
   min-width: 0;
-  padding: .8rem 2.7rem .8rem .8rem;
+  padding: .8rem;
   border: 1px solid var(--border);
   border-radius: .6rem;
   color: var(--card-foreground);
