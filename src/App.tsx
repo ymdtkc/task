@@ -701,6 +701,8 @@ export default function App() {
                 error={talkMemos.error}
                 onRetry={talkMemos.retry}
                 onDelete={talkMemos.deleteMemo}
+                onMove={talkMemos.moveMemo}
+                movingMemoIds={talkMemos.movingMemoIds}
               />
             </TabsContent>
 
