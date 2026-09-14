@@ -5174,12 +5174,26 @@ html {
   gap: 1rem;
 }
 
+.talk-memos__hint {
+  margin: .4rem 0 0;
+  color: var(--muted-foreground);
+  font-size: .75rem;
+  line-height: 1.5;
+}
+
 .talk-memos__group {
   min-width: 0;
   padding: 1rem;
   border: 1px solid var(--border);
   border-radius: .75rem;
   background: var(--card);
+  transition: outline-color .15s ease, box-shadow .15s ease;
+}
+
+.talk-memos__group[data-drop-active="true"] {
+  outline: 3px solid var(--ring);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 5px color-mix(in srgb, var(--ring) 12%, transparent);
 }
 
 .talk-memos__group--3 {
@@ -5252,11 +5266,54 @@ html {
   gap: .65rem;
 }
 
+.talk-memos__card {
+  position: relative;
+  min-width: 0;
+}
+
+.talk-memos__card[data-dragging="true"] {
+  opacity: .45;
+}
+
+.talk-memos__drag-handle {
+  position: absolute;
+  top: .35rem;
+  right: .35rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: .4rem;
+  color: var(--muted-foreground);
+  cursor: grab;
+  user-select: none;
+}
+
+.talk-memos__drag-handle:hover {
+  color: var(--foreground);
+  background: var(--accent);
+}
+
+.talk-memos__drag-handle:active {
+  cursor: grabbing;
+}
+
+.talk-memos__drag-handle[data-disabled="true"] {
+  cursor: default;
+  opacity: .6;
+}
+
+.talk-memos__drag-handle svg {
+  width: 1.1rem;
+  height: 1.1rem;
+}
+
 .talk-memos__item {
   display: block;
   width: 100%;
   min-width: 0;
-  padding: .8rem;
+  padding: .8rem 2.7rem .8rem .8rem;
   border: 1px solid var(--border);
   border-radius: .6rem;
   color: var(--card-foreground);
@@ -5323,6 +5380,9 @@ html {
 
 .talk-memos__dialog {
   max-width: 36rem;
+  max-height: calc(100vh - 2rem);
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
 }
 
 .talk-memos__form,
@@ -5373,6 +5433,27 @@ html {
 
 .talk-memos__importance-option:hover {
   background: var(--accent);
+}
+
+.talk-memos__importance-option:disabled {
+  cursor: default;
+}
+
+.talk-memos__field:disabled .talk-memos__importance-option {
+  opacity: .6;
+}
+
+.talk-memos__saving {
+  display: flex;
+  align-items: center;
+  gap: .4rem;
+  color: var(--muted-foreground);
+  font-size: .875rem;
+}
+
+.talk-memos__saving svg {
+  width: 1rem;
+  height: 1rem;
 }
 
 .talk-memos__importance-option--3[data-selected="true"] {
@@ -5470,6 +5551,11 @@ html {
 }
 
 @media (max-width: 640px) {
+  .talk-memos__dialog .talk-memos__importance-option,
+  .talk-memos__dialog [data-slot="dialog-footer"] button {
+    min-height: 2.75rem;
+  }
+
   .talk-memo-form__top-row {
     grid-template-columns: minmax(0, 1fr);
   }

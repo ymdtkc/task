@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { createTalkMemosRepo } from "../lib/talkMemosRepo";
-import type { NewTalkMemo, TalkMemo } from "../types/talkMemo";
+import type { NewTalkMemo, TalkMemo, TalkMemoImportance } from "../types/talkMemo";
 import { useRealtimeTalkMemos } from "./useRealtimeTalkMemos";
 
 const UNDO_WINDOW_MS = 8000;
@@ -20,7 +20,12 @@ export function useTalkMemos(userId: string | null) {
   const memosRef = useRef<TalkMemo[]>([]);
   const remotelyDeletedIds = useRef<Set<string>>(new Set());
   const activeUserId = useRef<string | null>(userId);
+  // Distinguish separate sessions even if the user switches A -> B -> A.
+  const ownerSession = useRef(0);
+  if (activeUserId.current !== userId) ownerSession.current += 1;
   activeUserId.current = userId;
+  const pendingMoves = useRef(new Map<string, symbol>());
+  const [movingMemoIds, setMovingMemoIds] = useState<ReadonlySet<string>>(new Set());
   const syncGeneration = useRef(0);
   const [syncRequest, setSyncRequest] = useState<{
     userId: string;
@@ -39,6 +44,8 @@ export function useTalkMemos(userId: string | null) {
 
   useEffect(() => {
     syncGeneration.current += 1;
+    pendingMoves.current.clear();
+    setMovingMemoIds(new Set());
     remotelyDeletedIds.current = new Set();
     memosRef.current = [];
     setMemos([]);
@@ -193,9 +200,50 @@ export function useTalkMemos(userId: string | null) {
     [repo, retry, userId],
   );
 
+  const moveMemo = useCallback(
+    async (id: string, importance: TalkMemoImportance) => {
+      if (!repo || !userId || id.startsWith("temp-") || pendingMoves.current.has(id)) return;
+      if (importance !== 1 && importance !== 2 && importance !== 3) return;
+      const memo = memosRef.current.find((item) => item.id === id);
+      if (!memo || memo.importance === importance || remotelyDeletedIds.current.has(id)) return;
+
+      const operationUserId = userId;
+      const session = ownerSession.current;
+      const operation = Symbol(id);
+      pendingMoves.current.set(id, operation);
+      setMovingMemoIds(new Set(pendingMoves.current.keys()));
+      setMemos((current) => current.map((item) =>
+        item.id === id ? { ...item, importance } : item,
+      ));
+      const isCurrentSession = () =>
+        activeUserId.current === operationUserId && ownerSession.current === session;
+
+      try {
+        await repo.updateImportance(id, importance);
+        if (!isCurrentSession()) return;
+        toast.success("メモの重要度を変更しました");
+      } catch (cause) {
+        if (!isCurrentSession()) return;
+        toast.error(
+          `重要度を保存できませんでした。最新の状態を読み直します: ${errorMessage(cause)}`,
+        );
+      } finally {
+        if (isCurrentSession() && pendingMoves.current.get(id) === operation) {
+          pendingMoves.current.delete(id);
+          setMovingMemoIds(new Set(pendingMoves.current.keys()));
+          // Re-read authoritative state instead of letting an old response
+          // overwrite a newer realtime update or resurrect a deleted memo.
+          retry();
+        }
+      }
+    },
+    [repo, retry, userId],
+  );
+
   const deleteMemo = useCallback(
     async (id: string) => {
       if (!repo || !userId) return;
+      if (pendingMoves.current.has(id) || id.startsWith("temp-")) return;
       const operationUserId = userId;
       const currentMemos = memosRef.current;
       const index = currentMemos.findIndex((memo) => memo.id === id);
@@ -256,6 +304,7 @@ export function useTalkMemos(userId: string | null) {
     retry,
     addMemo,
     deleteMemo,
+    moveMemo,
+    movingMemoIds: isCurrentOwner ? movingMemoIds : new Set<string>(),
   };
 }
-

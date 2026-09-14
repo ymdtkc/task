@@ -8,6 +8,7 @@ import type {
 export interface TalkMemosRepo {
   list(): Promise<TalkMemo[]>;
   create(input: NewTalkMemo): Promise<TalkMemo>;
+  updateImportance(id: string, importance: TalkMemoImportance): Promise<TalkMemo>;
   remove(id: string): Promise<void>;
   restore(memo: TalkMemo): Promise<TalkMemo>;
 }
@@ -69,6 +70,20 @@ export function createTalkMemosRepo(userId: string): TalkMemosRepo {
       const { data, error } = await client
         .from("talk_memos")
         .insert(toInsertPayload(input, userId))
+        .select()
+        .single();
+      if (error) throw error;
+      return talkMemoFromRow(data as TalkMemoRow);
+    },
+
+    async updateImportance(id, importance) {
+      toImportance(importance);
+      const { data, error } = await client
+        .from("talk_memos")
+        .update({ importance })
+        .eq("id", id)
+        .eq("user_id", userId)
+        .is("deleted_at", null)
         .select()
         .single();
       if (error) throw error;
